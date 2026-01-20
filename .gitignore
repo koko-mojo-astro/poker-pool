@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+dist/
+dist-server/
+.env
+
+# Build outputs
+client/dist/
+server/dist/
+
+# IDE and System files
+.vscode/
+.idea/
+.DS_Store
+*.log
+npm-debug.log*
+
+# Local development
+client/.env.local
+client/.env.*.local
+server/.env.local
+
+# Gemini/AI related
+.gemini/
+.agent/
+brain/
+implementation_plan.md
+walkthrough.md
+task.md
