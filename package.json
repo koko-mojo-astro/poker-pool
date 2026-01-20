@@ -4,14 +4,15 @@
     "description": "Poker Pool Helper Root",
     "private": true,
     "scripts": {
-        "start": "concurrently \"npm run start:server\" \"npm run start:client\"",
+        "start": "npm run start:server",
         "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
         "start:server": "npm start --prefix server",
         "dev:server": "npm run dev --prefix server",
         "start:client": "npm run dev --prefix client",
         "dev:client": "npm run dev --prefix client",
         "build": "npm run build --prefix server && npm run build --prefix client",
-        "install:all": "npm install && npm install --prefix server && npm install --prefix client"
+        "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+        "postinstall": "npm run install:all"
     },
     "devDependencies": {
         "concurrently": "^8.2.2"

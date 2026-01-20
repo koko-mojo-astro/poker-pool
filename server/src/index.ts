@@ -2,18 +2,22 @@ import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { RoomManager } from './RoomManager';
-import { ClientMessage, ServerMessage, GameState, Player, Card } from '../../shared/types';
-import { v4 as uuidv4 } from 'uuid'; // Ensure uuid import if needed, though we might not use it directly here
+import { ClientMessage, ServerMessage, GameState, Player } from '../../shared/types';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
 
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
 const roomManager = new RoomManager();
+const PORT = process.env.PORT || 3000;
 
-const PORT = 3000;
+// Serve static files from the React app dist folder
+const clientDistPath = path.join(__dirname, '../../client/dist');
+app.use(express.static(clientDistPath));
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws: WebSocket) => {
     let currentPlayerId: string | null = null;
     let currentRoomId: string | null = null;
 
@@ -234,6 +238,11 @@ wss.on('connection', (ws) => {
             }
         });
     }
+});
+
+// Any other request that doesn't match an API or static file, send back index.html
+app.get('*', (req, res) => {
+    res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 
 server.listen(PORT, () => {

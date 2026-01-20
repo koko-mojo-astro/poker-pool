@@ -10,9 +10,12 @@ export function useWebSocket() {
 
     useEffect(() => {
         // Create WebSocket connection.
-        // Assuming backend is on port 3000. In dev, Vite proxies or we use direct URL.
-        // For local dev right now:
-        const ws = new WebSocket('ws://localhost:3000');
+        // In production, we connect to the same host using wss or ws
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host; // includes port if present
+        // Use environment variable for local dev if needed, or just let it fall back
+        const wsUrl = import.meta.env.DEV ? 'ws://localhost:3000' : `${protocol}//${host}`;
+        const ws = new WebSocket(wsUrl);
         socketRef.current = ws;
 
         ws.onopen = () => {
