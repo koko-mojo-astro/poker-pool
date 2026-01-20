@@ -14,7 +14,7 @@ const roomManager = new RoomManager();
 const PORT = process.env.PORT || 3000;
 
 // Serve static files from the React app dist folder
-const clientDistPath = path.join(__dirname, '../../client/dist');
+const clientDistPath = path.join(process.cwd(), '../client/dist');
 app.use(express.static(clientDistPath));
 
 wss.on('connection', (ws: WebSocket) => {
