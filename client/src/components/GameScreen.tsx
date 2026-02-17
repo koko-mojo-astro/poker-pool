@@ -202,14 +202,19 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
                 {/* My Hand */}
                 <div style={{
                     display: 'flex',
-                    gap: '12px',
-                    overflowX: 'auto',
-                    paddingBottom: '25px',
+                    flexWrap: 'wrap',
+                    columnGap: '12px',
+                    rowGap: '40px',
+                    paddingBottom: '45px',
                     paddingTop: '10px',
-                    justifyContent: myPlayer.hand.length < 4 ? 'center' : 'flex-start',
-                    WebkitOverflowScrolling: 'touch'
+                    justifyContent: 'center'
                 }}>
-                    {myPlayer.hand.map(card => (
+                    {[...myPlayer.hand].sort((a, b) => {
+                        const ranks: Record<string, number> = {
+                            'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13
+                        };
+                        return ranks[a.rank] - ranks[b.rank];
+                    }).map(card => (
                         <div key={card.id} style={{ margin: '0 4px' }}>
                             <Card card={card} onPot={handlePot} disabled={false} />
                         </div>
