@@ -46,7 +46,17 @@ export interface GameState {
     deckCount: number;
     winnerId: string | null;
     payouts?: PayoutInfo[];
+    settlements?: PairwiseSettlement[];
     history: GameResult[];
+}
+
+export interface PlayerSnapshot {
+    id: string;
+    name: string;
+    directJ: number;
+    allJ: number;
+    cardCount: number;  // cards remaining when game ended
+    hasLicense: boolean;
 }
 
 export interface GameResult {
@@ -54,12 +64,21 @@ export interface GameResult {
     winnerName: string;
     timestamp: number;
     netChanges: Record<string, number>; // PlayerId -> Net Amount (+/-)
+    playerSnapshots: PlayerSnapshot[];
+    settlements: PairwiseSettlement[];
 }
 
 export interface PayoutInfo {
     playerId: string;
     amountToPay: number; // Positive means they pay, could be negative or handled differently
     calculation: string; // "2.00 + (5 * 0.50)"
+}
+
+export interface PairwiseSettlement {
+    fromPlayerId: string;  // player who pays
+    toPlayerId: string;    // player who receives
+    amount: number;        // always positive (direction established by from/to)
+    breakdown: string;     // e.g. "$3.00 (game+AllJ) − $1.50 (DirectJ)"
 }
 
 

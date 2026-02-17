@@ -1,5 +1,5 @@
 import { Room, ServerPlayer } from './types';
-import { Player, GameState, RoomConfig, Card } from '../../shared/types';
+import { Player, GameState, RoomConfig, Card, PairwiseSettlement, PayoutInfo } from '../../shared/types';
 import { Deck } from './Deck';
 import { v4 as uuidv4 } from 'uuid';
 import { WebSocket } from 'ws';
@@ -144,38 +144,126 @@ export class RoomManager {
         return room;
     }
 
+    /**
+     * Compute pairwise settlements between all players.
+     * Rules:
+     * 1. Game base: each loser pays winner gameAmount
+     * 2. Winner's All J: each loser pays winner jokerAmount * winner.allJ
+     * 3. Any player's Direct J: "above" player pays jokerAmount * (numPlayers-1) * directJ
+     * 4. Loser's All J: each other loser pays jokerAmount * allJ (winner doesn't pay)
+     */
+    private computeSettlements(players: ServerPlayer[], winnerId: string, config: RoomConfig): PairwiseSettlement[] {
+        const { gameAmount, jokerAmount } = config;
+        const numPlayers = players.length;
+
+        // Accumulate raw flows: key = "fromId->toId", value = amount
+        const flows: Record<string, number> = {};
+        const addFlow = (fromId: string, toId: string, amount: number) => {
+            if (fromId === toId || amount <= 0) return;
+            const key = `${fromId}->${toId}`;
+            flows[key] = (flows[key] || 0) + amount;
+        };
+
+        const winner = players.find(p => p.id === winnerId)!;
+
+        // Rule 1: Game base — losers pay winner
+        players.forEach(p => {
+            if (p.id !== winnerId) {
+                addFlow(p.id, winnerId, gameAmount);
+            }
+        });
+
+        // Rule 2: Winner's All J — losers pay winner
+        if (winner.jokerBalls.all > 0) {
+            players.forEach(p => {
+                if (p.id !== winnerId) {
+                    addFlow(p.id, winnerId, jokerAmount * winner.jokerBalls.all);
+                }
+            });
+        }
+
+        // Rule 3: Any player's Direct J — "above" player pays
+        // "Above" = previous player in turn order (circular)
+        players.forEach((p, idx) => {
+            if (p.jokerBalls.direct > 0) {
+                const aboveIdx = (idx - 1 + numPlayers) % numPlayers;
+                const abovePlayer = players[aboveIdx];
+                const amount = jokerAmount * (numPlayers - 1) * p.jokerBalls.direct;
+                addFlow(abovePlayer.id, p.id, amount);
+            }
+        });
+
+        // Rule 4: Loser's All J — other losers pay (winner doesn't pay)
+        players.forEach(loser => {
+            if (loser.id === winnerId) return;
+            if (loser.jokerBalls.all > 0) {
+                players.forEach(otherLoser => {
+                    if (otherLoser.id === winnerId || otherLoser.id === loser.id) return;
+                    addFlow(otherLoser.id, loser.id, jokerAmount * loser.jokerBalls.all);
+                });
+            }
+        });
+
+        // Net each pair
+        const settlements: PairwiseSettlement[] = [];
+        const processed = new Set<string>();
+
+        Object.keys(flows).forEach(key => {
+            const [fromId, toId] = key.split('->');
+            const pairKey = [fromId, toId].sort().join('|');
+            if (processed.has(pairKey)) return;
+            processed.add(pairKey);
+
+            const aToB = flows[`${fromId}->${toId}`] || 0;
+            const bToA = flows[`${toId}->${fromId}`] || 0;
+            const net = aToB - bToA;
+
+            if (Math.abs(net) > 0.001) {
+                const actualFrom = net > 0 ? fromId : toId;
+                const actualTo = net > 0 ? toId : fromId;
+                const absNet = Math.abs(net);
+
+                // Build breakdown string
+                const parts: string[] = [];
+                const fwd = flows[`${actualFrom}->${actualTo}`] || 0;
+                const rev = flows[`${actualTo}->${actualFrom}`] || 0;
+                if (fwd > 0) parts.push(`$${fwd.toFixed(2)}`);
+                if (rev > 0) parts.push(`−$${rev.toFixed(2)} offset`);
+
+                settlements.push({
+                    fromPlayerId: actualFrom,
+                    toPlayerId: actualTo,
+                    amount: Math.round(absNet * 100) / 100,
+                    breakdown: parts.join(' ') || `$${absNet.toFixed(2)}`
+                });
+            }
+        });
+
+        return settlements;
+    }
+
     getPublicState(room: Room): GameState {
-        let payouts;
+        let payouts: PayoutInfo[] | undefined;
+        let settlements: PairwiseSettlement[] | undefined;
+
         if (room.status === 'FINISHED' && room.winnerId) {
             const winner = room.players.find(p => p.id === room.winnerId);
             if (winner) {
+                // Compute pairwise settlements
+                settlements = this.computeSettlements(room.players, room.winnerId, room.config);
+
+                // Also compute legacy payouts for backward compat
                 const { gameAmount, jokerAmount } = room.config;
-                const winnerIndex = room.players.findIndex(p => p.id === room.winnerId);
-                const previousPlayerIndex = (winnerIndex - 1 + room.players.length) % room.players.length;
-                const previousPlayer = room.players[previousPlayerIndex];
-
                 payouts = room.players.filter(p => p.id !== room.winnerId).map(loser => {
-                    let totalOwed = gameAmount;
-                    let calcString = `${gameAmount.toFixed(2)} (Game)`;
-
-                    // All Joker: Everyone pays
-                    if (winner.jokerBalls.all > 0) {
-                        const allCost = winner.jokerBalls.all * jokerAmount;
-                        totalOwed += allCost;
-                        calcString += ` + ${allCost.toFixed(2)} (All J)`;
-                    }
-
-                    // Direct Joker: Only Previous Player pays
-                    if (loser.id === previousPlayer.id && winner.jokerBalls.direct > 0) {
-                        const directCost = winner.jokerBalls.direct * jokerAmount;
-                        totalOwed += directCost;
-                        calcString += ` + ${directCost.toFixed(2)} (Direct J)`;
-                    }
-
+                    // Sum all settlements where this loser pays
+                    const totalOwed = settlements!.filter(s => s.fromPlayerId === loser.id)
+                        .reduce((sum, s) => sum + s.amount, 0);
+                    const totalReceived = settlements!.filter(s => s.toPlayerId === loser.id)
+                        .reduce((sum, s) => sum + s.amount, 0);
                     return {
                         playerId: loser.id,
-                        amountToPay: totalOwed,
-                        calculation: calcString
+                        amountToPay: Math.round((totalOwed - totalReceived) * 100) / 100,
+                        calculation: `Net of all settlements`
                     };
                 });
             }
@@ -194,6 +282,7 @@ export class RoomManager {
             deckCount: room.deck.length,
             winnerId: room.winnerId,
             payouts,
+            settlements,
             history: room.history
         };
     }
@@ -272,41 +361,34 @@ export class RoomManager {
             if (room.winnerId) {
                 const winner = room.players.find(p => p.id === room.winnerId);
                 if (winner) {
-                    // Calculate Payouts for History
-                    const { gameAmount, jokerAmount } = room.config;
-                    const winnerIndex = room.players.findIndex(p => p.id === room.winnerId);
-                    const previousPlayerIndex = (winnerIndex - 1 + room.players.length) % room.players.length;
-                    const previousPlayer = room.players[previousPlayerIndex];
+                    // Calculate settlements using the 4-rule engine
+                    const settlements = this.computeSettlements(room.players, room.winnerId, room.config);
 
                     const netChanges: Record<string, number> = {};
-
-                    // Initialize 0 for everyone
                     room.players.forEach(p => netChanges[p.id] = 0);
 
-                    room.players.forEach(p => {
-                        if (p.id === room.winnerId) return; // Skip winner processing loop
-
-                        let lostAmount = gameAmount;
-
-                        // All Joker
-                        if (winner.jokerBalls.all > 0) {
-                            lostAmount += winner.jokerBalls.all * jokerAmount;
-                        }
-
-                        // Direct Joker (Only if previous player)
-                        if (p.id === previousPlayer.id && winner.jokerBalls.direct > 0) {
-                            lostAmount += winner.jokerBalls.direct * jokerAmount;
-                        }
-
-                        netChanges[p.id] -= lostAmount;
-                        netChanges[room.winnerId!] += lostAmount;
+                    settlements.forEach(s => {
+                        netChanges[s.fromPlayerId] -= s.amount;
+                        netChanges[s.toPlayerId] += s.amount;
                     });
+
+                    // Save player snapshots for history display
+                    const playerSnapshots = room.players.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        directJ: p.jokerBalls.direct,
+                        allJ: p.jokerBalls.all,
+                        cardCount: p.hand.length,
+                        hasLicense: p.hasLicense
+                    }));
 
                     room.history.push({
                         winnerId: winner.id,
                         winnerName: winner.name,
                         timestamp: Date.now(),
-                        netChanges
+                        netChanges,
+                        playerSnapshots,
+                        settlements
                     });
                 }
             }
