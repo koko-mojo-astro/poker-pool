@@ -8,9 +8,10 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "vite preview --host"
+    "start": "serve dist"
   },
   "dependencies": {
+    "serve": "^14.2.4",
     "@instantdb/react": "^0.22.142",
     "@react-oauth/google": "^0.13.4",
     "react": "^19.2.0",
