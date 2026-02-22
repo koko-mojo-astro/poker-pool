@@ -68,10 +68,12 @@ jobs:
     
     steps:
       - name: Trigger Render Deployment
-        if: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        if: env.RENDER_DEPLOY_HOOK != ''
         run: |
           echo "Triggering Render deployment for version ${{ needs.bump-version.outputs.new_version }}..."
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}" \
+          curl -X POST "$RENDER_DEPLOY_HOOK" \
             -H "Content-Type: application/json" \
             -d '{"clearCache": false}'
           echo "Deployment triggered successfully!"
