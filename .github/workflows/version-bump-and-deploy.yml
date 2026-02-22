@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - 'package.json'
-      - 'package-lock.json'
-      - 'CHANGELOG.md'
 
 jobs:
   bump-version:
