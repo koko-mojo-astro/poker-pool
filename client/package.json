@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@instantdb/react": "^0.22.142",
+    "@react-oauth/google": "^0.13.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

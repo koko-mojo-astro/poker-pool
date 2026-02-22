@@ -8,7 +8,6 @@ interface HomeProps {
 
 export function Home({ sendMessage, error }: HomeProps) {
     const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
-    const [name, setName] = useState('');
     const [isLinked, setIsLinked] = useState(false);
 
     // Create State
@@ -30,25 +29,22 @@ export function Home({ sendMessage, error }: HomeProps) {
 
     const handleCreate = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!name) return;
         sendMessage({
             type: 'CREATE_ROOM',
             payload: {
                 gameAmount: parseFloat(gameAmount),
-                jokerAmount: parseFloat(jokerAmount),
-                creatorName: name
+                jokerAmount: parseFloat(jokerAmount)
             }
         });
     };
 
     const handleJoin = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!name || !roomCode) return;
+        if (!roomCode) return;
         sendMessage({
             type: 'JOIN_ROOM',
             payload: {
-                roomId: roomCode.toUpperCase(),
-                name
+                roomId: roomCode.toUpperCase()
             }
         });
     };
@@ -117,17 +113,6 @@ export function Home({ sendMessage, error }: HomeProps) {
                 )}
 
                 <div className="animate-fade-in">
-                    <div style={{ marginBottom: 'var(--gap-md)' }}>
-                        <label style={{ display: 'block', marginBottom: 'var(--gap-xs)', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Your Name</label>
-                        <input
-                            type="text"
-                            placeholder="e.g. Alice"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            autoFocus
-                        />
-                    </div>
-
                     {activeTab === 'create' ? (
                         <form onSubmit={handleCreate}>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--gap-md)', marginBottom: 'var(--gap-lg)' }}>

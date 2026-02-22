@@ -21,7 +21,7 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
         return p ? p.name : id.slice(0, 8);
     };
 
-    // My settlements: where I pay or receive
+    // My match settlements: where I pay or receive in THIS match
     const myPayments = settlements.filter(s => s.fromPlayerId === playerId);
     const myReceipts = settlements.filter(s => s.toPlayerId === playerId);
     const otherSettlements = settlements.filter(s => s.fromPlayerId !== playerId && s.toPlayerId !== playerId);
@@ -30,12 +30,15 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
     const myTotalReceive = myReceipts.reduce((sum, s) => sum + s.amount, 0);
     const myNet = myTotalReceive - myTotalPay;
 
+    // Total session net for me
+    const myTotalSessionNet = (gameState.totalSettlements || {})[playerId || ''] || 0;
+
     const handleRestart = () => {
         sendMessage({ type: 'RESTART_GAME' });
     };
 
     return (
-        <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '2rem' }}>
+        <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '2rem', paddingBottom: '4rem' }}>
             <h1 className="animate-fade-in" style={{ fontSize: '3rem', marginBottom: '1rem', background: 'linear-gradient(to right, #fbbf24, #d97706)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
                 GAME OVER
             </h1>
@@ -76,7 +79,7 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
 
                 {/* MY SETTLEMENT SECTION */}
                 <h3 style={{ borderBottom: '1px solid var(--glass-border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
-                    {isWinner ? '💰 Your Earnings' : '📋 Your Settlement'}
+                    {isWinner ? '💰 This Match Earnings' : '📋 This Match Settlement'}
                 </h3>
 
                 {isWinner ? (
@@ -92,7 +95,7 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
                             />
                         ))}
                         <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '12px', border: '1px solid var(--success)' }}>
-                            <div style={{ color: 'var(--success)', fontSize: '0.9rem' }}>TOTAL EARNINGS</div>
+                            <div style={{ color: 'var(--success)', fontSize: '0.9rem' }}>MATCH EARNINGS</div>
                             <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--success)' }}>+ ${myTotalReceive.toFixed(2)}</div>
                         </div>
                     </>
@@ -122,13 +125,28 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
                             background: myNet >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
                             border: `1px solid ${myNet >= 0 ? 'var(--success)' : 'var(--danger)'}`
                         }}>
-                            <div style={{ color: myNet >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: '0.9rem' }}>YOUR NET</div>
+                            <div style={{ color: myNet >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: '0.9rem' }}>MATCH NET</div>
                             <div style={{ fontSize: '2rem', fontWeight: 800, color: myNet >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                                 {myNet >= 0 ? '+' : '-'} ${Math.abs(myNet).toFixed(2)}
                             </div>
                         </div>
                     </>
                 )}
+
+                {/* TOTAL SESSION NET */}
+                <div style={{
+                    marginTop: '2rem', padding: '1rem', borderRadius: '12px',
+                    background: myTotalSessionNet >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    border: `2px solid ${myTotalSessionNet >= 0 ? 'var(--success)' : 'var(--danger)'}`,
+                    boxShadow: myTotalSessionNet >= 0 ? '0 0 15px rgba(16, 185, 129, 0.2)' : '0 0 15px rgba(239, 68, 68, 0.2)'
+                }}>
+                    <div style={{ color: myTotalSessionNet >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: '1rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Total Session Balance
+                    </div>
+                    <div style={{ fontSize: '2.5rem', fontWeight: 900, color: myTotalSessionNet >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                        {myTotalSessionNet >= 0 ? '+' : '-'} ${Math.abs(myTotalSessionNet).toFixed(2)}
+                    </div>
+                </div>
 
                 {/* OTHER SETTLEMENTS */}
                 {otherSettlements.length > 0 && (
