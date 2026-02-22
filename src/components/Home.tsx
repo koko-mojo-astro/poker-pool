@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { ClientMessage } from '@shared/types';
+import type { ClientMessage } from '../types';
 
 interface HomeProps {
     sendMessage: (msg: ClientMessage) => void;

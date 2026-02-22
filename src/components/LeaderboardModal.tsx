@@ -1,4 +1,4 @@
-import type { GameResult, Player } from '@shared/types';
+import type { GameResult, Player } from '../types';
 import { useState } from 'react';
 
 interface LeaderboardModalProps {

@@ -1,4 +1,4 @@
-import type { Card, Suit, Rank } from '../../../shared/types';
+import type { Card, Suit, Rank } from '../types';
 import { id } from '@instantdb/react';
 
 export class Deck {

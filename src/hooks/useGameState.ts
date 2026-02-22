@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { db } from '../lib/db';
-import type { ClientMessage, GameState, GameStatus } from '../../../shared/types';
+import type { ClientMessage, GameState, GameStatus } from '../types';
 import { id, tx } from '@instantdb/react';
 import { GameEngine } from '../lib/GameEngine.ts';
 

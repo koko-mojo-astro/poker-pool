@@ -1,64 +1,73 @@
-# Poker Pool Helper
+# React + TypeScript + Vite
 
-A modern web-based poker pool management and scorekeeping application. Designed for seamless group play with real-time updates, score tracking, and automated payout calculations.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Features
+Currently, two official plugins are available:
 
-- **Real-time Gameplay**: Instant state synchronization between all players.
-- **Dynamic Leaderboard**: Track sessions and net settlements across multiple games.
-- **Automated Payouts**: Complex "Direct Joker" and "All Joker" multiplier calculations handled automatically.
-- **Session Persistence**: Refresh your browser anytime without losing your hand or position.
-- **Mobile Responsive**: Sleek glassmorphism UI that works perfectly on phones and desktops.
-- **Easy Room Management**: Create rooms with a custom code and share with friends.
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## Tech Stack
+## React Compiler
 
-- **Frontend**: React (Vite), TypeScript, Vanilla CSS (Glassmorphism design).
-- **Backend**: Node.js, Express, WebSocket (`ws`).
-- **Shared**: Common TypeScript interfaces for type safety across the stack.
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## Getting Started
+## Expanding the ESLint configuration
 
-### Prerequisites
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
 
-- [Node.js](https://nodejs.org/) (v16 or higher recommended)
-- [npm](https://www.npmjs.com/)
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
 
-### Installation
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
 
-1. Clone the repository
-2. Install dependencies for the root, client, and server:
-   ```bash
-   npm install
-   cd client && npm install
-   cd ../server && npm install
-   ```
-
-### Running Locally
-
-From the root directory, start both the client and server in development mode:
-
-```bash
-npm run dev
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```
 
-- Client: [http://localhost:5173](http://localhost:5173)
-- Server: [ws://localhost:3000](ws://localhost:3000)
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
-## Game Rules
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
 
-1. **Wait for Players**: 2-4 players join via a room code.
-2. **Setup**: Host chooses a "Game Amount" (base pot) and "Joker Amount" (multiplier base).
-3. **Gameplay**:
-   - Players pot card ranks (e.g., A, 7, K).
-   - Draw cards or mark a foul (losing license).
-   - Update Joker multipliers (Direct or All) based on license status.
-4. **Victory**: The first player to clear their hand wins the pot plus joker penalties from other players.
-
-## Author
-
-**koko-mojo-astro**
-
-## License
-
-This project is for private use and educational purposes.
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+```

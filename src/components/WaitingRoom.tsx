@@ -1,4 +1,4 @@
-import type { GameState, ClientMessage } from '@shared/types';
+import type { GameState, ClientMessage } from '../types';
 import { useState } from 'react';
 import { LeaderboardModal } from './LeaderboardModal';
 

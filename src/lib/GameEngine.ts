@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { tx, id } from '@instantdb/react';
 import { Deck } from './Deck';
-import type { PairwiseSettlement, RoomConfig } from '../../../shared/types';
+import type { PairwiseSettlement, RoomConfig } from '../types';
 
 export class GameEngine {
 

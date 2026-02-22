@@ -1,4 +1,4 @@
-import type { Card as CardType, Suit } from '@shared/types';
+import type { Card as CardType, Suit } from '../types';
 
 interface CardProps {
     card: CardType;
