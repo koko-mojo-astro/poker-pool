@@ -1,4 +1,4 @@
-import type { GameState, ClientMessage } from '@shared/types';
+import type { GameState, ClientMessage } from '../types';
 import { useState } from 'react';
 import { LeaderboardModal } from './LeaderboardModal';
 
@@ -15,7 +15,6 @@ export function WaitingRoom({ gameState, playerId, sendMessage }: WaitingRoomPro
 
     const handleCopy = () => {
         navigator.clipboard.writeText(window.location.origin + '?room=' + gameState.roomId);
-        // TODO: Toast
     };
 
     const handleStart = () => {
@@ -32,9 +31,9 @@ export function WaitingRoom({ gameState, playerId, sendMessage }: WaitingRoomPro
                 </div>
 
                 <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                    <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Room Code</h2>
+                    <h2 style={{ fontSize: '1rem', marginBottom: '0.5rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Room Code</h2>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-                        <span style={{ fontSize: '3rem', fontWeight: 800, letterSpacing: '4px', fontFamily: 'monospace', color: 'var(--primary)' }}>
+                        <span style={{ fontSize: '2.5rem', fontWeight: 800, letterSpacing: '6px', fontFamily: 'monospace', color: 'var(--primary)' }}>
                             {gameState.roomId}
                         </span>
                         <button

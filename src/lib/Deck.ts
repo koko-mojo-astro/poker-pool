@@ -1,5 +1,5 @@
-import { Card, Suit, Rank } from '../../shared/types';
-import { v4 as uuidv4 } from 'uuid';
+import type { Card, Suit, Rank } from '../types';
+import { id } from '@instantdb/react';
 
 export class Deck {
     private cards: Card[] = [];
@@ -18,7 +18,7 @@ export class Deck {
                 this.cards.push({
                     suit,
                     rank,
-                    id: uuidv4()
+                    id: id()
                 });
             }
         }
@@ -40,7 +40,6 @@ export class Deck {
         return this.cards.length;
     }
 
-    // Determine if a card value is already in the potted list
     static isValuePotted(card: Card, pottedCards: Rank[]): boolean {
         return pottedCards.includes(card.rank);
     }

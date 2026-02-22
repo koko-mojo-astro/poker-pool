@@ -1,20 +1,32 @@
 {
-    "name": "poker-pool-helper",
-    "version": "1.0.0",
-    "description": "Poker Pool Helper Root",
-    "private": true,
-    "scripts": {
-        "start": "npm run start:server",
-        "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-        "start:server": "npm start --prefix server",
-        "dev:server": "npm run dev --prefix server",
-        "start:client": "npm run dev --prefix client",
-        "dev:client": "npm run dev --prefix client",
-        "build": "npm run build --prefix server && npm run build --prefix client",
-        "install:all": "npm install --prefix server && npm install --prefix client",
-        "postinstall": "npm run install:all"
-    },
-    "devDependencies": {
-        "concurrently": "^8.2.2"
-    }
+  "name": "poker-pool-helper",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@instantdb/react": "^0.22.142",
+    "@react-oauth/google": "^0.13.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vite": "^7.2.4"
+  }
 }

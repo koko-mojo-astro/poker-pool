@@ -1,5 +1,5 @@
 import React from 'react';
-import type { GameState, ClientMessage } from '@shared/types';
+import type { GameState, ClientMessage } from '../types';
 import { Card } from './Card';
 import { useToast } from './Toast';
 import { useState } from 'react';

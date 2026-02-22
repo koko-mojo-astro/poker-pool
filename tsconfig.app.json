@@ -30,13 +30,12 @@
     /* Path Aliases */
     "baseUrl": ".",
     "paths": {
-      "@shared/*": [
-        "../shared/*"
+      "@/*": [
+        "./src/*"
       ]
     }
   },
   "include": [
-    "src",
-    "../shared"
+    "src"
   ]
 }

@@ -47,6 +47,7 @@ export interface GameState {
     winnerId: string | null;
     payouts?: PayoutInfo[];
     settlements?: PairwiseSettlement[];
+    totalSettlements?: Record<string, number>;
     history: GameResult[];
 }
 
@@ -82,11 +83,11 @@ export interface PairwiseSettlement {
 }
 
 
-// --- WebSocket Messages ---
+// --- Action Messages ---
 
 export type ClientMessage =
-    | { type: 'CREATE_ROOM'; payload: { gameAmount: number; jokerAmount: number; creatorName: string } }
-    | { type: 'JOIN_ROOM'; payload: { roomId: string; name: string } }
+    | { type: 'CREATE_ROOM'; payload: { gameAmount: number; jokerAmount: number } }
+    | { type: 'JOIN_ROOM'; payload: { roomId: string } }
     | { type: 'START_GAME' }
     | { type: 'POT_CARD'; payload: { cardId: string } }
     | { type: 'DRAW_CARD' }
