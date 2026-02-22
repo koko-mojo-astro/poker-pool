@@ -60,6 +60,12 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
                                 const msg = myPlayer.isCreator ? 'Exit & disband room?' : 'Leave the current game?';
                                 if (confirm(msg)) {
                                     sendMessage({ type: 'EXIT_ROOM' });
+                                    const params = new URLSearchParams(window.location.search);
+                                    if (params.has('room')) {
+                                        params.delete('room');
+                                        const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+                                        window.history.replaceState({}, document.title, newUrl);
+                                    }
                                 }
                             }}
                             style={{

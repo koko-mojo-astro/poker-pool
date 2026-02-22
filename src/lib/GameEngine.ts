@@ -260,12 +260,23 @@ export class GameEngine {
         await db.transact(txs);
     }
 
-    static async exitRoom(db: any, _roomId: string, playerId: string) {
-        // Technically, leaving the room means just deleting the roomPlayer relation
-        // Or un-linking. Doing a cascade delete requires deleting the roomPlayers entity.
-        await db.transact([
-            tx.roomPlayers[playerId].delete()
-        ]);
+    static async exitRoom(db: any, roomData: any, playerId: string) {
+        if (!roomData || !roomData.players) return;
+
+        const player = roomData.players.find((p: any) => p.id === playerId);
+        if (!player) return;
+
+        if (player.isCreator) {
+            // If creator leaves, delete the entire room (cascades to roomPlayers)
+            await db.transact([
+                tx.rooms[roomData.id].delete()
+            ]);
+        } else {
+            // Otherwise, just remove the player from the room
+            await db.transact([
+                tx.roomPlayers[playerId].delete()
+            ]);
+        }
     }
 
     // Identical logic from RoomManager.ts to compute payouts accurately

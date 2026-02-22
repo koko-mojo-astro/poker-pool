@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import React from 'react';
 import { db } from '../lib/db';
 import type { ClientMessage, GameState, GameStatus } from '../types';
 import { id, tx } from '@instantdb/react';
@@ -17,6 +18,9 @@ function generateRoomCode(): string {
 export function useGameState() {
     // 1. Auth state
     const { user, isLoading: isAuthLoading } = db.useAuth();
+    
+    // Add local state to track if we are actively processing a JOIN_ROOM message
+    const [isJoining, setIsJoining] = React.useState(false);
 
     // 2. Query the user's profile → roomPlayers → room to find their active session
     //    This replaces ALL localStorage usage. InstantDB's reactive useQuery
@@ -54,6 +58,19 @@ export function useGameState() {
     const activePlayerId = activeRoomPlayer?.id || null;
     const activeRoomRaw = activeRoomPlayer?.room;
     const activeRoom = Array.isArray(activeRoomRaw) ? activeRoomRaw[0] : activeRoomRaw;
+
+    // If the user was in a room but it's no longer active (e.g. deleted by creator)
+    // clear the room parameter from the URL so they go back to the home screen
+    React.useEffect(() => {
+        if (!isUserLoading && !activeRoom) {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('room')) {
+                params.delete('room');
+                const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+                window.history.replaceState({}, document.title, newUrl);
+            }
+        }
+    }, [activeRoom, isUserLoading]);
 
     // Build the GameState object that the UI expects
     let gameState: GameState | null = null;
@@ -105,74 +122,94 @@ export function useGameState() {
         try {
             switch (msg.type) {
                 case 'CREATE_ROOM': {
-                    const { gameAmount, jokerAmount } = msg.payload;
-                    const roomId = id();
-                    const playerRecordId = id();
-                    const roomCode = generateRoomCode();
+                    if (isJoining) return;
+                    setIsJoining(true);
+                    try {
+                        const { gameAmount, jokerAmount } = msg.payload;
+                        const roomId = id();
+                        const playerRecordId = id();
+                        const roomCode = generateRoomCode();
 
-                    const profileId = resolvedProfile?.id;
-                    if (!profileId) {
-                        alert('Profile not found. Please set up your profile first.');
-                        return;
+                        const profileId = resolvedProfile?.id;
+                        if (!profileId) {
+                            alert('Profile not found. Please set up your profile first.');
+                            return;
+                        }
+
+                        await db.transact([
+                            tx.rooms[roomId].update({
+                                roomCode,
+                                status: 'WAITING',
+                                config: { gameAmount, jokerAmount },
+                                pottedCards: [],
+                                deck: [],
+                            }),
+                            tx.roomPlayers[playerRecordId].update({
+                                hasLicense: false,
+                                jokerBalls: { direct: 0, all: 0 },
+                                isCreator: true,
+                                hand: [],
+                                cardCount: 0
+                            }),
+                            tx.roomPlayers[playerRecordId].link({ room: roomId }),
+                            tx.roomPlayers[playerRecordId].link({ profile: profileId })
+                        ]);
+                    } finally {
+                        setIsJoining(false);
                     }
-
-                    await db.transact([
-                        tx.rooms[roomId].update({
-                            roomCode,
-                            status: 'WAITING',
-                            config: { gameAmount, jokerAmount },
-                            pottedCards: [],
-                            deck: [],
-                        }),
-                        tx.roomPlayers[playerRecordId].update({
-                            hasLicense: false,
-                            jokerBalls: { direct: 0, all: 0 },
-                            isCreator: true,
-                            hand: [],
-                            cardCount: 0
-                        }),
-                        tx.roomPlayers[playerRecordId].link({ room: roomId }),
-                        tx.roomPlayers[playerRecordId].link({ profile: profileId })
-                    ]);
                     // No localStorage needed — useQuery will reactively pick up
                     // the new roomPlayer→room link automatically
                     break;
                 }
                 case 'JOIN_ROOM': {
-                    const { roomId: roomCode } = msg.payload;
-                    const playerRecordId = id();
+                    if (isJoining) return;
+                    setIsJoining(true);
+                    try {
+                        const { roomId: roomCode } = msg.payload;
+                        const playerRecordId = id();
 
-                    const profileId = resolvedProfile?.id;
-                    if (!profileId) {
-                        alert('Profile not found. Please set up your profile first.');
-                        return;
+                        const profileId = resolvedProfile?.id;
+                        if (!profileId) {
+                            alert('Profile not found. Please set up your profile first.');
+                            setIsJoining(false);
+                            return;
+                        }
+
+                        // Look up the room by roomCode
+                        const roomLookup = await db.queryOnce({
+                            rooms: { $: { where: { roomCode: roomCode.toUpperCase() } } }
+                        });
+                        const targetRoom = roomLookup.data?.rooms?.[0];
+                        if (!targetRoom) {
+                            alert('Room not found. Please check the code and try again.');
+                            const params = new URLSearchParams(window.location.search);
+                            if (params.has('room')) {
+                                params.delete('room');
+                                const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+                                window.history.replaceState({}, document.title, newUrl);
+                            }
+                            setIsJoining(false);
+                            return;
+                        }
+
+                        await db.transact([
+                            tx.roomPlayers[playerRecordId].update({
+                                hasLicense: false,
+                                jokerBalls: { direct: 0, all: 0 },
+                                isCreator: false,
+                                hand: [],
+                                cardCount: 0
+                            }).link({ room: targetRoom.id }).link({ profile: profileId })
+                        ]);
+                        // No localStorage needed — useQuery auto-updates
+                    } finally {
+                        setIsJoining(false);
                     }
-
-                    // Look up the room by roomCode
-                    const roomLookup = await db.queryOnce({
-                        rooms: { $: { where: { roomCode: roomCode.toUpperCase() } } }
-                    });
-                    const targetRoom = roomLookup.data?.rooms?.[0];
-                    if (!targetRoom) {
-                        alert('Room not found. Please check the code and try again.');
-                        return;
-                    }
-
-                    await db.transact([
-                        tx.roomPlayers[playerRecordId].update({
-                            hasLicense: false,
-                            jokerBalls: { direct: 0, all: 0 },
-                            isCreator: false,
-                            hand: [],
-                            cardCount: 0
-                        }).link({ room: targetRoom.id }).link({ profile: profileId })
-                    ]);
-                    // No localStorage needed — useQuery auto-updates
                     break;
                 }
                 case 'EXIT_ROOM': {
-                    if (activeRoom && activePlayerId) {
-                        await GameEngine.exitRoom(db, activeRoom.id, activePlayerId);
+                    if (roomData && activePlayerId) {
+                        await GameEngine.exitRoom(db, roomData, activePlayerId);
                         // Deleting the roomPlayer record removes the link,
                         // so useQuery will stop finding an active room
                     }
@@ -212,6 +249,6 @@ export function useGameState() {
         gameState,
         playerId: activePlayerId,
         error: null,
-        isLoading: isAuthLoading || isUserLoading
+        isLoading: isAuthLoading || isUserLoading || isJoining
     };
 }

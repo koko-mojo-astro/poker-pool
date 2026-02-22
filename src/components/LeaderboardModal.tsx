@@ -62,8 +62,11 @@ export function LeaderboardModal({ history, players, onClose }: LeaderboardModal
                 width: '100%',
                 maxWidth: '600px',
                 position: 'relative',
-                maxHeight: '90vh',
-                overflowY: 'auto'
+                maxHeight: '85vh',
+                display: 'flex',
+                flexDirection: 'column',
+                borderRadius: '16px',
+                padding: '24px'
             }} onClick={e => e.stopPropagation()}>
                 <button onClick={onClose} style={{
                     position: 'absolute',
@@ -73,131 +76,136 @@ export function LeaderboardModal({ history, players, onClose }: LeaderboardModal
                     border: 'none',
                     color: 'var(--text-muted)',
                     fontSize: '1.5rem',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    zIndex: 10
                 }}>&times;</button>
 
                 <h2 style={{ marginTop: 0, marginBottom: '1.5rem', textAlign: 'center', background: 'linear-gradient(to right, #fbbf24, #ff9900)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontSize: '1.8rem', fontWeight: 800 }}>Session Ledger</h2>
 
-                {/* Net Balances */}
-                {settlementRows.length === 0 ? (
-                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1rem', border: '1px dashed var(--glass-border)', borderRadius: '12px', marginBottom: '2rem' }}>
-                        No financial data yet.
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginBottom: '2rem' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', padding: '0 10px', textTransform: 'uppercase' }}>
-                            <div>Player</div>
-                            <div style={{ textAlign: 'right' }}>Net Balance</div>
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px', marginBottom: '1rem' }}>
+                    {/* Net Balances */}
+                    {settlementRows.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1rem', border: '1px dashed var(--glass-border)', borderRadius: '12px', marginBottom: '2rem' }}>
+                            No financial data yet.
                         </div>
-                        {settlementRows.map((row) => (
-                            <div key={row.id} style={{
-                                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
-                                alignItems: 'center',
-                                background: row.amount > 0 ? 'rgba(16, 185, 129, 0.08)' : (row.amount < 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(255,255,255,0.03)'),
-                                padding: '12px 16px',
-                                borderRadius: '8px',
-                                border: row.amount > 0 ? '1px solid rgba(16, 185, 129, 0.3)' : (row.amount < 0 ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--glass-border)')
-                            }}>
-                                <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{row.name}</div>
-                                <div style={{
-                                    textAlign: 'right',
-                                    fontWeight: 900,
-                                    fontSize: '1.1rem',
-                                    color: row.amount > 0 ? 'var(--success)' : (row.amount < 0 ? 'var(--danger)' : 'var(--text-muted)')
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginBottom: '2rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', padding: '0 10px', textTransform: 'uppercase' }}>
+                                <div>Player</div>
+                                <div style={{ textAlign: 'right' }}>Net Balance</div>
+                            </div>
+                            {settlementRows.map((row) => (
+                                <div key={row.id} style={{
+                                    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
+                                    alignItems: 'center',
+                                    background: row.amount > 0 ? 'rgba(16, 185, 129, 0.08)' : (row.amount < 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(255,255,255,0.03)'),
+                                    padding: '12px 16px',
+                                    borderRadius: '8px',
+                                    border: row.amount > 0 ? '1px solid rgba(16, 185, 129, 0.3)' : (row.amount < 0 ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--glass-border)')
                                 }}>
-                                    {row.amount > 0 ? '+' : (row.amount < 0 ? '-' : '')}${Math.abs(row.amount).toFixed(2)}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {/* Win History */}
-                <h2 style={{ marginBottom: '1.5rem', textAlign: 'center', color: 'var(--text-main)', fontSize: '1.2rem', marginTop: '2rem', fontWeight: 700 }}>Win History</h2>
-
-                {sortedStats.length === 0 ? (
-                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                        No games played yet.
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {sortedStats.map(([name, wins], i) => (
-                            <div key={name} style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                background: i === 0 ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.03)',
-                                padding: '12px 16px',
-                                borderRadius: '8px',
-                                border: i === 0 ? '1px solid rgba(251, 191, 36, 0.3)' : '1px solid transparent'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                    <span style={{
-                                        width: '24px',
-                                        height: '24px',
-                                        borderRadius: '50%',
-                                        background: i === 0 ? '#fbbf24' : 'rgba(255,255,255,0.1)',
-                                        color: i === 0 ? '#000' : 'white',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '0.8rem',
-                                        fontWeight: 'bold'
-                                    }}>{i + 1}</span>
-                                    <span style={{ fontWeight: i === 0 ? 'bold' : 'normal', fontSize: '0.95rem' }}>{name}</span>
-                                </div>
-                                <div style={{ fontWeight: 'bold', color: i === 0 ? '#fbbf24' : 'var(--text-main)' }}>
-                                    {wins} {wins === 1 ? 'Win' : 'Wins'}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {/* Game Detail History */}
-                <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '2rem', marginBottom: '1rem', borderBottom: '1px solid var(--glass-border)', paddingBottom: '0.5rem' }}>Game Details</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {history.slice().reverse().map((res, idx) => {
-                        const originalIdx = history.length - 1 - idx;
-                        const isExpanded = expandedGame === originalIdx;
-
-                        return (
-                            <div key={idx}>
-                                <div
-                                    onClick={() => setExpandedGame(isExpanded ? null : originalIdx)}
-                                    style={{
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        fontSize: '0.85rem', color: 'var(--text-main)',
-                                        padding: '12px 16px',
-                                        background: isExpanded ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
-                                        borderRadius: isExpanded ? '8px 8px 0 0' : '8px',
-                                        border: '1px solid var(--glass-border)',
-                                        cursor: 'pointer',
-                                        transition: 'background 0.2s'
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span>👑</span>
-                                        <span style={{ fontWeight: 'bold' }}>{getPlayerName(res.winnerId)}</span>
-                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                                            {new Date(res.timestamp).toLocaleTimeString()}
-                                        </span>
+                                    <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{row.name}</div>
+                                    <div style={{
+                                        textAlign: 'right',
+                                        fontWeight: 900,
+                                        fontSize: '1.1rem',
+                                        color: row.amount > 0 ? 'var(--success)' : (row.amount < 0 ? 'var(--danger)' : 'var(--text-muted)')
+                                    }}>
+                                        {row.amount > 0 ? '+' : (row.amount < 0 ? '-' : '')}${Math.abs(row.amount).toFixed(2)}
                                     </div>
-                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>▼</span>
                                 </div>
+                            ))}
+                        </div>
+                    )}
 
-                                {isExpanded && (
-                                    <GameDetailPanel
-                                        result={res}
-                                        getPlayerName={getPlayerName}
-                                    />
-                                )}
-                            </div>
-                        );
-                    })}
+                    {/* Win History */}
+                    <h2 style={{ marginBottom: '1.5rem', textAlign: 'center', color: 'var(--text-main)', fontSize: '1.2rem', marginTop: '2rem', fontWeight: 700 }}>Win History</h2>
+
+                    {sortedStats.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                            No games played yet.
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {sortedStats.map(([name, wins], i) => (
+                                <div key={name} style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    background: i === 0 ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.03)',
+                                    padding: '12px 16px',
+                                    borderRadius: '8px',
+                                    border: i === 0 ? '1px solid rgba(251, 191, 36, 0.3)' : '1px solid transparent'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                        <span style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '50%',
+                                            background: i === 0 ? '#fbbf24' : 'rgba(255,255,255,0.1)',
+                                            color: i === 0 ? '#000' : 'white',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 'bold'
+                                        }}>{i + 1}</span>
+                                        <span style={{ fontWeight: i === 0 ? 'bold' : 'normal', fontSize: '0.95rem' }}>{name}</span>
+                                    </div>
+                                    <div style={{ fontWeight: 'bold', color: i === 0 ? '#fbbf24' : 'var(--text-main)' }}>
+                                        {wins} {wins === 1 ? 'Win' : 'Wins'}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Game Detail History */}
+                    <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '2rem', marginBottom: '1rem', borderBottom: '1px solid var(--glass-border)', paddingBottom: '0.5rem' }}>Game Details</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {history.slice().reverse().map((res, idx) => {
+                            const originalIdx = history.length - 1 - idx;
+                            const isExpanded = expandedGame === originalIdx;
+
+                            return (
+                                <div key={idx}>
+                                    <div
+                                        onClick={() => setExpandedGame(isExpanded ? null : originalIdx)}
+                                        style={{
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                            fontSize: '0.85rem', color: 'var(--text-main)',
+                                            padding: '12px 16px',
+                                            background: isExpanded ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
+                                            borderRadius: isExpanded ? '8px 8px 0 0' : '8px',
+                                            border: '1px solid var(--glass-border)',
+                                            cursor: 'pointer',
+                                            transition: 'background 0.2s'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span>👑</span>
+                                            <span style={{ fontWeight: 'bold' }}>{getPlayerName(res.winnerId)}</span>
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                                                {new Date(res.timestamp).toLocaleTimeString()}
+                                            </span>
+                                        </div>
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>▼</span>
+                                    </div>
+
+                                    {isExpanded && (
+                                        <GameDetailPanel
+                                            result={res}
+                                            getPlayerName={getPlayerName}
+                                        />
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
 
-                <button onClick={onClose} className="btn-primary" style={{ width: '100%', marginTop: '2rem' }}>Close</button>
+                <div style={{ padding: '0 8px' }}>
+                    <button onClick={onClose} className="btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Close</button>
+                </div>
             </div>
         </div>
     );
@@ -213,7 +221,7 @@ function GameDetailPanel({ result, getPlayerName }: {
     return (
         <div style={{
             background: 'rgba(0,0,0,0.3)', padding: '12px',
-            borderRadius: '0 0 10px 10px',
+            borderRadius: '0 0 8px 8px',
             border: '1px solid var(--glass-border)',
             borderTop: 'none'
         }}>

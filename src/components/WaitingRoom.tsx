@@ -24,9 +24,38 @@ export function WaitingRoom({ gameState, playerId, sendMessage }: WaitingRoomPro
     return (
         <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '4rem' }}>
             <div className="glass-panel" style={{ width: '100%', maxWidth: '600px' }}>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem', gap: '8px' }}>
                     <button onClick={() => setShowLeaderboard(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '8px 16px', borderRadius: '8px', color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         🏆 Leaderboard
+                    </button>
+                    <button
+                        onClick={() => {
+                            const msg = isCreator ? 'Exit & disband room?' : 'Leave the waiting room?';
+                            if (confirm(msg)) {
+                                sendMessage({ type: 'EXIT_ROOM' });
+                                // Remove ?room= parameter from URL if it exists so they don't get stuck in join mode
+                                const params = new URLSearchParams(window.location.search);
+                                if (params.has('room')) {
+                                    params.delete('room');
+                                    const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+                                    window.history.replaceState({}, document.title, newUrl);
+                                }
+                            }
+                        }}
+                        style={{
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid var(--danger)',
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            color: 'var(--danger)',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}
+                        title={isCreator ? "Disband Room" : "Leave Room"}
+                    >
+                        🚪 {isCreator ? "Disband" : "Leave"}
                     </button>
                 </div>
 
@@ -47,7 +76,7 @@ export function WaitingRoom({ gameState, playerId, sendMessage }: WaitingRoomPro
 
 
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', margin: '20px auto' }}>
                         <div style={{ textAlign: 'center' }}>
                             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Game Prize</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{gameState.config.gameAmount} <span style={{ fontSize: '0.8rem', fontWeight: 400 }}>NZD</span></div>

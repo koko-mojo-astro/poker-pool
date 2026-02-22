@@ -17,15 +17,27 @@ export function Home({ sendMessage, error }: HomeProps) {
     // Join State
     const [roomCode, setRoomCode] = useState('');
 
+    const autoJoinedRef = React.useRef(false);
+
     React.useEffect(() => {
+        if (autoJoinedRef.current) return;
+        
         const params = new URLSearchParams(window.location.search);
         const room = params.get('room');
         if (room) {
-            setRoomCode(room.toUpperCase());
+            autoJoinedRef.current = true;
+            const code = room.toUpperCase();
+            setRoomCode(code);
             setActiveTab('join');
             setIsLinked(true);
+            
+            // Auto-join if a room parameter is present
+            sendMessage({
+                type: 'JOIN_ROOM',
+                payload: { roomId: code }
+            });
         }
-    }, []);
+    }, [sendMessage]);
 
     const handleCreate = (e: React.FormEvent) => {
         e.preventDefault();
@@ -147,7 +159,7 @@ export function Home({ sendMessage, error }: HomeProps) {
                                         placeholder="e.g. ABC1234"
                                         value={roomCode}
                                         onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                                        maxLength={6}
+                                        maxLength={8}
                                         style={{ fontFamily: 'monospace', letterSpacing: '2px', fontSize: '1.2rem', textAlign: 'center' }}
                                     />
                                 </div>
