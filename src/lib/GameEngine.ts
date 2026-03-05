@@ -40,7 +40,8 @@ export class GameEngine {
 
         txs.push(tx.rooms[roomData.id].update({
             status: 'PLAYING',
-            deck: remainingDeck
+            deck: remainingDeck,
+            turnOrder: players.map(p => p.id)
         }));
 
         await db.transact(txs);
@@ -135,13 +136,13 @@ export class GameEngine {
             // Calculate new total settlements for the room
             const currentTotalSettlements = roomData.totalSettlements || {};
             const newTotalSettlements = { ...currentTotalSettlements };
-            
+
             Object.entries(netChanges).forEach(([playerId, amount]) => {
                 newTotalSettlements[playerId] = (newTotalSettlements[playerId] || 0) + amount;
             });
 
-            txs.push(tx.rooms[roomData.id].update({ 
-                status: 'FINISHED', 
+            txs.push(tx.rooms[roomData.id].update({
+                status: 'FINISHED',
                 winnerId: winningPlayerId,
                 totalSettlements: newTotalSettlements
             }));
@@ -244,7 +245,8 @@ export class GameEngine {
                 status: 'WAITING',
                 deck: [],
                 pottedCards: [],
-                winnerId: null
+                winnerId: null,
+                turnOrder: [],
             })
         ];
 

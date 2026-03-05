@@ -20,6 +20,7 @@ const _schema = i.schema({
             status: i.string(), // 'WAITING' | 'PLAYING' | 'FINISHED'
             pottedCards: i.json(), // array of ranks e.g., ['7', 'K']
             deck: i.json(), // Array of Card objects
+            turnOrder: i.json().optional(), // Array of player IDs representing turn order
             winnerId: i.string().optional(),
             totalSettlements: i.json().optional(), // Record<string, number> - accumulated net changes
         }),
