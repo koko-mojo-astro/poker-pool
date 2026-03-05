@@ -44,6 +44,49 @@ export const LoginScreen: React.FC = () => {
                         />
                     </GoogleOAuthProvider>
                 </div>
+
+                {import.meta.env.DEV && (
+                    <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '12px', border: '1px dashed var(--glass-border)' }}>
+                        <h3 style={{ fontSize: '0.9rem', marginBottom: '1rem', color: 'var(--text-muted)' }}>Developer Playground Auth</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1rem' }}>
+                            {[1, 2, 3, 4].map(num => (
+                                <button
+                                    key={num}
+                                    onClick={() => db.auth.sendMagicCode({ email: `tunmin.koko305+test${num}@gmail.com` }).then(() => alert(`Sent code to test${num}!`)).catch(e => alert(e.message))}
+                                    className="btn-primary"
+                                    style={{ fontSize: '0.75rem', padding: '8px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid var(--primary)' }}
+                                >
+                                    Send Code to Test {num}
+                                </button>
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <input
+                                type="email"
+                                id="dev-email-input"
+                                placeholder="Email (e.g. tunmin.koko305+test1@gmail.com)"
+                                style={{ flex: 1, padding: '8px', borderRadius: '8px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--glass-border)', color: 'white', fontSize: '0.8rem' }}
+                            />
+                            <input
+                                type="text"
+                                id="dev-code-input"
+                                placeholder="Code"
+                                style={{ width: '80px', padding: '8px', borderRadius: '8px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--glass-border)', color: 'white', fontSize: '0.8rem' }}
+                            />
+                            <button
+                                onClick={() => {
+                                    const email = (document.getElementById('dev-email-input') as HTMLInputElement).value;
+                                    const code = (document.getElementById('dev-code-input') as HTMLInputElement).value;
+                                    if (email && code) db.auth.signInWithMagicCode({ email, code }).catch(e => alert(e.message));
+                                }}
+                                className="btn-primary"
+                                style={{ padding: '8px 16px', fontSize: '0.8rem' }}
+                            >
+                                Login
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
