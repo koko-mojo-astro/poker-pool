@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { db } from '../lib/db';
 import type { ClientMessage, GameState, GameStatus } from '../types';
 import { id, tx } from '@instantdb/react';
@@ -18,8 +19,6 @@ export function useGameState() {
     // 1. Auth state
     const { user, isLoading: isAuthLoading } = db.useAuth();
 
-    // Add local state to track if we are actively processing a JOIN_ROOM message
-    const [isJoining, setIsJoining] = React.useState(false);
 
     // 2. Query the user's profile → roomPlayers → room to find their active session
     //    This replaces ALL localStorage usage. InstantDB's reactive useQuery
@@ -159,87 +158,84 @@ export function useGameState() {
                         tx.roomPlayers[playerRecordId].link({ room: roomId }),
                         tx.roomPlayers[playerRecordId].link({ profile: profileId })
                     ]);
-                } finally {
-                    setIsJoining(false);
-                }
                     // No localStorage needed — useQuery will reactively pick up
                     // the new roomPlayer→room link automatically
                     break;
-            }
+                }
                 case 'JOIN_ROOM': {
-        const { roomId: roomCode } = msg.payload;
-        const playerRecordId = id();
+                    const { roomId: roomCode } = msg.payload;
+                    const playerRecordId = id();
 
-        const profileId = resolvedProfile?.id;
-        if (!profileId) {
-            alert('Profile not found. Please set up your profile first.');
-            return;
-        }
+                    const profileId = resolvedProfile?.id;
+                    if (!profileId) {
+                        alert('Profile not found. Please set up your profile first.');
+                        return;
+                    }
 
-        // Look up the room by roomCode
-        const roomLookup = await db.queryOnce({
-            rooms: { $: { where: { roomCode: roomCode.toUpperCase() } } }
-        });
-        const targetRoom = roomLookup.data?.rooms?.[0];
-        if (!targetRoom) {
-            alert('Room not found. Please check the code and try again.');
-            return;
-        }
+                    // Look up the room by roomCode
+                    const roomLookup = await db.queryOnce({
+                        rooms: { $: { where: { roomCode: roomCode.toUpperCase() } } }
+                    });
+                    const targetRoom = roomLookup.data?.rooms?.[0];
+                    if (!targetRoom) {
+                        alert('Room not found. Please check the code and try again.');
+                        return;
+                    }
 
-        await db.transact([
-            tx.roomPlayers[playerRecordId].update({
-                hasLicense: false,
-                jokerBalls: { direct: 0, all: 0 },
-                isCreator: false,
-                hand: [],
-                cardCount: 0
-            }).link({ room: targetRoom.id }).link({ profile: profileId })
-        ]);
-        // No localStorage needed — useQuery auto-updates
-        break;
-    }
+                    await db.transact([
+                        tx.roomPlayers[playerRecordId].update({
+                            hasLicense: false,
+                            jokerBalls: { direct: 0, all: 0 },
+                            isCreator: false,
+                            hand: [],
+                            cardCount: 0
+                        }).link({ room: targetRoom.id }).link({ profile: profileId })
+                    ]);
+                    // No localStorage needed — useQuery auto-updates
+                    break;
+                }
                 case 'EXIT_ROOM': {
-        if (activeRoom && activePlayerId) {
-            await GameEngine.exitRoom(db, activeRoom.id, activePlayerId);
-            // Deleting the roomPlayer record removes the link,
-            // so useQuery will stop finding an active room
-        }
-        break;
-    }
+                    if (activeRoom && activePlayerId) {
+                        await GameEngine.exitRoom(db, activeRoom.id, activePlayerId);
+                        // Deleting the roomPlayer record removes the link,
+                        // so useQuery will stop finding an active room
+                    }
+                    break;
+                }
                 // --- Game Engine Logic ---
                 case 'START_GAME':
-    if (activeRoom && activePlayerId) await GameEngine.startGame(db, roomData, activePlayerId);
-    break;
+                    if (activeRoom && activePlayerId) await GameEngine.startGame(db, roomData, activePlayerId);
+                    break;
                 case 'DRAW_CARD':
-    if (activeRoom && activePlayerId) await GameEngine.drawCard(db, roomData, activePlayerId);
-    break;
+                    if (activeRoom && activePlayerId) await GameEngine.drawCard(db, roomData, activePlayerId);
+                    break;
                 case 'POT_CARD':
-    if (activeRoom && activePlayerId) await GameEngine.potCard(db, roomData, activePlayerId, msg.payload.cardId);
-    break;
+                    if (activeRoom && activePlayerId) await GameEngine.potCard(db, roomData, activePlayerId, msg.payload.cardId);
+                    break;
                 case 'MARK_FOUL':
-    if (activeRoom && activePlayerId) await GameEngine.markFoul(db, roomData, activePlayerId);
-    break;
+                    if (activeRoom && activePlayerId) await GameEngine.markFoul(db, roomData, activePlayerId);
+                    break;
                 case 'UPDATE_JOKER':
-    if (activeRoom && activePlayerId) await GameEngine.updateJokerCount(db, roomData, activePlayerId, msg.payload.type, msg.payload.delta);
-    break;
+                    if (activeRoom && activePlayerId) await GameEngine.updateJokerCount(db, roomData, activePlayerId, msg.payload.type, msg.payload.delta);
+                    break;
                 case 'RESTART_GAME':
-    if (activeRoom && activePlayerId) await GameEngine.restartGame(db, roomData, activePlayerId);
-    break;
+                    if (activeRoom && activePlayerId) await GameEngine.restartGame(db, roomData, activePlayerId);
+                    break;
                 case 'RECONNECT':
-    // No-op: with InstantDB, the user's active room is always
-    // derived from the database. Just refreshing the page works.
-    break;
-}
+                    // No-op: with InstantDB, the user's active room is always
+                    // derived from the database. Just refreshing the page works.
+                    break;
+            }
         } catch (e: any) {
-    alert("Action failed: " + e.message);
-}
+            alert("Action failed: " + e.message);
+        }
     };
 
-return {
-    sendMessage,
-    gameState,
-    playerId: activePlayerId,
-    error: null,
-    isLoading: isAuthLoading || isUserLoading
-};
+    return {
+        sendMessage,
+        gameState,
+        playerId: activePlayerId,
+        error: null,
+        isLoading: isAuthLoading || isUserLoading
+    };
 }
