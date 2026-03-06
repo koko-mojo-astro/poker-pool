@@ -24,9 +24,32 @@ export function WaitingRoom({ gameState, playerId, sendMessage }: WaitingRoomPro
     return (
         <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '4rem' }}>
             <div className="glass-panel" style={{ width: '100%', maxWidth: '600px' }}>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-                    <button onClick={() => setShowLeaderboard(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '8px 16px', borderRadius: '8px', color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem', gap: '8px' }}>
+                    <button onClick={() => setShowLeaderboard(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '8px 16px', borderRadius: '8px', color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                         🏆 Leaderboard
+                    </button>
+                    <button
+                        onClick={() => {
+                            const msg = isCreator ? 'Exit & disband room?' : 'Leave the waiting room?';
+                            if (confirm(msg)) {
+                                sendMessage({ type: 'EXIT_ROOM' });
+                            }
+                        }}
+                        style={{
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid var(--danger)',
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            color: 'var(--danger)',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer'
+                        }}
+                        title={isCreator ? "Disband Room" : "Leave Room"}
+                    >
+                        🚪
                     </button>
                 </div>
 
