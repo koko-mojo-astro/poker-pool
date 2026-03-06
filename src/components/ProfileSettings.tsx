@@ -28,6 +28,8 @@ export const ProfileSettings: React.FC<Props> = ({ isInitialSetup, onComplete })
     const existingProfile = Array.isArray(profileData) ? profileData[0] : profileData;
     const [displayName, setDisplayName] = useState('');
     const [expandedMatch, setExpandedMatch] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
 
     useEffect(() => {
         if (existingProfile) {
@@ -40,6 +42,9 @@ export const ProfileSettings: React.FC<Props> = ({ isInitialSetup, onComplete })
     const handleSave = async () => {
         if (!displayName.trim() || !user) return;
 
+        setIsSaving(true);
+        setShowSuccess(false);
+
         try {
             if (existingProfile) {
                 await db.transact(tx.profiles[existingProfile.id].update({ displayName }));
@@ -50,13 +55,23 @@ export const ProfileSettings: React.FC<Props> = ({ isInitialSetup, onComplete })
                     tx.profiles[profileId].link({ user: user.id })
                 ]);
             }
+
+            setShowSuccess(true);
+            setTimeout(() => setShowSuccess(false), 3000);
+
             if (onComplete && isInitialSetup) onComplete();
         } catch (e: any) {
             alert('Error saving profile: ' + e.message);
+        } finally {
+            setIsSaving(false);
         }
     };
 
-    if (isLoading) return <div className="container" style={{ justifyContent: 'center', alignItems: 'center' }}>Loading...</div>;
+    if (isLoading) return (
+        <div style={{ padding: 'var(--gap-xl)', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
+            <div className="animate-fade-in" style={{ color: 'var(--text-muted)' }}>Loading...</div>
+        </div>
+    );
 
     const matches = existingProfile?.matches || [];
 
@@ -76,7 +91,7 @@ export const ProfileSettings: React.FC<Props> = ({ isInitialSetup, onComplete })
     });
 
     return (
-        <div className="container" style={{ padding: 'var(--gap-xl) var(--gap-md)' }}>
+        <div style={{ padding: '0 0 var(--gap-xl) 0' }}>
             <div className="glass-panel animate-fade-in" style={{ marginBottom: 'var(--gap-xl)' }}>
                 <h1 style={{
                     fontSize: '2rem',
@@ -102,19 +117,40 @@ export const ProfileSettings: React.FC<Props> = ({ isInitialSetup, onComplete })
                 </div>
 
                 <div style={{ display: 'flex', gap: 'var(--gap-md)' }}>
-                    <button className="btn-primary" onClick={handleSave} disabled={!displayName.trim() || displayName === existingProfile?.displayName} style={{ flex: 1, height: '48px' }}>
-                        Save Name
+                    <button
+                        className="btn-primary"
+                        onClick={handleSave}
+                        disabled={isSaving || !displayName.trim() || displayName === existingProfile?.displayName}
+                        style={{ flex: 1, height: '48px', position: 'relative' }}
+                    >
+                        {isSaving ? 'Saving...' : 'Save Name'}
                     </button>
                     {!isInitialSetup && onComplete && (
                         <button onClick={onComplete} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', border: '1px solid var(--glass-border)', padding: '12px 24px', borderRadius: '12px', fontWeight: 600, cursor: 'pointer' }}>
-                            Back to Home
+                            Close
                         </button>
                     )}
                 </div>
+
+                {showSuccess && (
+                    <div className="animate-fade-in" style={{
+                        marginTop: 'var(--gap-md)',
+                        color: 'var(--success)',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        textAlign: 'center',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                    }}>
+                        <span>✓</span> Profile updated successfully!
+                    </div>
+                )}
             </div>
 
             {!isInitialSetup && (
-                <div className="glass-panel animate-fade-in" style={{ animationDelay: '0.1s' }}>
+                <div className="glass-panel animate-fade-in">
                     <h2 style={{ fontSize: '1.25rem', marginBottom: 'var(--gap-lg)', color: 'var(--text-main)', borderBottom: '1px solid var(--glass-border)', paddingBottom: 'var(--gap-sm)' }}>
                         Match History
                     </h2>

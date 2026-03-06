@@ -58,8 +58,8 @@ function MainApp() {
           title="Profile & History"
           style={{
             position: 'fixed',
-            top: 'var(--gap-lg)',
-            right: 'var(--gap-lg)',
+            top: 'var(--gap-sm)',
+            right: 'var(--gap-sm)',
             background: 'rgba(255,255,255,0.05)',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: '50%',
@@ -107,6 +107,23 @@ function App() {
       <db.SignedOut>
         <LoginScreen />
       </db.SignedOut>
+
+      {/* Global Footer */}
+      <footer style={{
+        textAlign: 'center',
+        padding: 'var(--gap-md) 0 calc(var(--gap-md) + var(--safe-area-bottom))',
+        color: 'var(--text-muted)',
+        fontSize: '0.7rem',
+        width: '100%',
+        marginTop: 'auto',
+        opacity: 0.6,
+        letterSpacing: '0.02em',
+        zIndex: 10
+      }}>
+        <p style={{ margin: 0 }}>
+          Made with <span style={{ color: '#a78bfa' }}>💜</span> by <strong>koko-mojo-astro</strong> &bull; v1.1.1
+        </p>
+      </footer>
     </>
   );
 }
