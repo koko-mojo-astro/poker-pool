@@ -167,6 +167,7 @@ export class GameEngine {
                     winnerId: winningPlayerId,
                     winnerName,
                     timestamp: Date.now(),
+                    roomCode: roomData.roomCode,
                     netChanges,
                     playerSnapshots,
                     settlements
@@ -174,8 +175,9 @@ export class GameEngine {
             );
 
             // Link profiles to match so history querying is easy
+            // Normalize profile shape: InstantDB may return it as an array OR a plain object
             roomData.players.forEach((p: any) => {
-                const profileId = p.profile?.[0]?.id;
+                const profileId = Array.isArray(p.profile) ? p.profile?.[0]?.id : p.profile?.id;
                 if (profileId) txs.push(tx.matches[matchId].link({ players: profileId }));
             });
         }
@@ -262,12 +264,22 @@ export class GameEngine {
         await db.transact(txs);
     }
 
-    static async exitRoom(db: any, _roomId: string, playerId: string) {
-        // Technically, leaving the room means just deleting the roomPlayer relation
-        // Or un-linking. Doing a cascade delete requires deleting the roomPlayers entity.
-        await db.transact([
-            tx.roomPlayers[playerId].delete()
-        ]);
+    static async exitRoom(db: any, roomData: any, playerId: string) {
+        if (!roomData) return;
+        const player = roomData.players?.find((p: any) => p.id === playerId);
+
+        if (player?.isCreator) {
+            // Creator disbands the room: explicitly delete all roomPlayers + the room
+            // in a single atomic transaction — no reliance on cascade behavior.
+            const txs: any[] = (roomData.players || []).map((p: any) => tx.roomPlayers[p.id].delete());
+            txs.push(tx.rooms[roomData.id].delete());
+            await db.transact(txs);
+        } else {
+            // Guest leaves: only remove their own roomPlayer record
+            await db.transact([
+                tx.roomPlayers[playerId].delete()
+            ]);
+        }
     }
 
     // Identical logic from RoomManager.ts to compute payouts accurately

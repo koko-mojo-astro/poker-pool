@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ClientMessage } from '../types';
+import { db } from '../lib/db';
 
 interface HomeProps {
     sendMessage: (msg: ClientMessage) => void;
@@ -18,13 +19,32 @@ export function Home({ sendMessage, error }: HomeProps) {
     const [roomCode, setRoomCode] = useState('');
 
     React.useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const room = params.get('room');
-        if (room) {
-            setRoomCode(room.toUpperCase());
-            setActiveTab('join');
-            setIsLinked(true);
-        }
+        const checkRoom = async () => {
+            const params = new URLSearchParams(window.location.search);
+            const room = params.get('room');
+            if (room) {
+                const upperRoom = room.toUpperCase();
+                // Check if the room exists in the DB
+                const roomLookup = await db.queryOnce({
+                    rooms: { $: { where: { roomCode: upperRoom } } }
+                });
+
+                if (roomLookup.data?.rooms?.length > 0) {
+                    setRoomCode(upperRoom);
+                    setActiveTab('join');
+                    setIsLinked(true);
+                } else {
+                    // Room doesn't exist. Clear URL param
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('room');
+                    window.history.replaceState({}, '', url.toString());
+                    setActiveTab('create');
+                    setIsLinked(false);
+                }
+            }
+        };
+
+        checkRoom();
     }, []);
 
     const handleCreate = (e: React.FormEvent) => {
@@ -51,6 +71,7 @@ export function Home({ sendMessage, error }: HomeProps) {
 
     return (
         <div className="container" style={{ justifyContent: 'flex-start' }}>
+
             <h1 style={{
                 fontSize: 'clamp(2.5rem, 8vw, 3.5rem)',
                 fontWeight: 900,
@@ -59,7 +80,8 @@ export function Home({ sendMessage, error }: HomeProps) {
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 textAlign: 'center',
-                letterSpacing: '-0.02em'
+                letterSpacing: '-0.02em',
+                marginTop: 'var(--gap-sm)' // Add top margin to balance absolute button
             }}>
                 Poker Pool
             </h1>

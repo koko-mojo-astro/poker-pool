@@ -196,7 +196,7 @@ export function useGameState() {
                 }
                 case 'EXIT_ROOM': {
                     if (activeRoom && activePlayerId) {
-                        await GameEngine.exitRoom(db, activeRoom.id, activePlayerId);
+                        await GameEngine.exitRoom(db, roomData, activePlayerId);
                         // Deleting the roomPlayer record removes the link,
                         // so useQuery will stop finding an active room
                     }

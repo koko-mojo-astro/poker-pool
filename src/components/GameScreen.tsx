@@ -42,7 +42,7 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
     return (
         <div className="container" style={{ paddingBottom: '3rem' }}>
             {/* Top Bar */}
-            <div className="glass-panel" style={{ padding: '0.8rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            <div className="glass-panel" style={{ padding: '0.8rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem', marginTop: '3.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
                     <div>Room: <strong>{gameState.roomId}</strong></div>
                     <div>Game: <strong>${gameState.config.gameAmount}</strong></div>
