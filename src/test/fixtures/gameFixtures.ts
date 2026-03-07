@@ -1,9 +1,5 @@
 import type { Card, Rank, RoomConfig, Suit } from '@/types';
 
-type PartialDeep<T> = {
-  [K in keyof T]?: T[K] extends object ? PartialDeep<T[K]> : T[K];
-};
-
 interface RoomPlayerFixture {
   id: string;
   profile: { id: string; displayName: string } | Array<{ id: string; displayName: string }>;
@@ -27,6 +23,29 @@ interface RoomDataFixture {
   totalSettlements: Record<string, number>;
 }
 
+type RoomPlayerOverrides = {
+  id: string;
+  profile?: RoomPlayerFixture['profile'];
+  hand?: Card[];
+  hasLicense?: boolean;
+  jokerBalls?: Partial<RoomPlayerFixture['jokerBalls']>;
+  isCreator?: boolean;
+  cardCount?: number;
+};
+
+type RoomDataOverrides = {
+  id?: string;
+  roomCode?: string;
+  status?: RoomDataFixture['status'];
+  config?: Partial<RoomConfig>;
+  pottedCards?: Rank[];
+  deck?: Card[];
+  turnOrder?: string[];
+  winnerId?: string | null;
+  players?: RoomPlayerFixture[];
+  totalSettlements?: Record<string, number>;
+};
+
 let nextCardId = 1;
 
 export function createCard(rank: Rank, suit: Suit = 'spades', id?: string): Card {
@@ -37,7 +56,7 @@ export function createCard(rank: Rank, suit: Suit = 'spades', id?: string): Card
   };
 }
 
-export function createPlayer(overrides: PartialDeep<RoomPlayerFixture> & { id: string }): RoomPlayerFixture {
+export function createPlayer(overrides: RoomPlayerOverrides): RoomPlayerFixture {
   const name = (Array.isArray(overrides.profile) ? overrides.profile[0]?.displayName : overrides.profile?.displayName)
     ?? `${overrides.id}-name`;
   const profileId = (Array.isArray(overrides.profile) ? overrides.profile[0]?.id : overrides.profile?.id)
@@ -60,10 +79,10 @@ export function createPlayer(overrides: PartialDeep<RoomPlayerFixture> & { id: s
   };
 }
 
-export function createRoomData(overrides: PartialDeep<RoomDataFixture> = {}): RoomDataFixture {
+export function createRoomData(overrides: RoomDataOverrides = {}): RoomDataFixture {
   const playerA = createPlayer({ id: 'p1', isCreator: true });
   const playerB = createPlayer({ id: 'p2' });
-  const players = (overrides.players as RoomPlayerFixture[] | undefined) ?? [playerA, playerB];
+  const players = overrides.players ?? [playerA, playerB];
 
   return {
     id: overrides.id ?? 'room-1',
@@ -73,9 +92,9 @@ export function createRoomData(overrides: PartialDeep<RoomDataFixture> = {}): Ro
       gameAmount: overrides.config?.gameAmount ?? 10,
       jokerAmount: overrides.config?.jokerAmount ?? 2,
     },
-    pottedCards: (overrides.pottedCards as Rank[] | undefined) ?? [],
-    deck: (overrides.deck as Card[] | undefined) ?? [],
-    turnOrder: (overrides.turnOrder as string[] | undefined) ?? players.map((p) => p.id),
+    pottedCards: overrides.pottedCards ?? [],
+    deck: overrides.deck ?? [],
+    turnOrder: overrides.turnOrder ?? players.map((p) => p.id),
     winnerId: overrides.winnerId ?? null,
     players,
     totalSettlements: overrides.totalSettlements ?? {},
