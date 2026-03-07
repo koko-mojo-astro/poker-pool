@@ -10,9 +10,10 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'jsdom',
+    // Default to node to keep CI (Node 18) stable for logic/unit tests.
+    // If/when component tests are added, switch specific suites to jsdom.
+    environment: 'node',
     globals: true,
-    setupFiles: ['./src/test/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
