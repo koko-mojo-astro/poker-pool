@@ -368,4 +368,13 @@ Fetch the URL for a topic to learn more about it.
 # Final Note
 
 Think before you answer. Make sure your code passes typechecks `tsc --noEmit` and works as expected.
+For any behavior change or bug fix, add or update deterministic unit tests and validate with:
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm run test
+```
+
+Prefer unit tests around game/business logic (`GameEngine`, game-state mapping, settlement rules) using mocked InstantDB transactions and deterministic randomness.
 Remember! AESTHETICS ARE VERY IMPORTANT. All apps should LOOK AMAZING and have GREAT FUNCTIONALITY!

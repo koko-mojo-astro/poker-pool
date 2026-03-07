@@ -58,6 +58,44 @@ npm run build
 
 The output will be generated in the `dist` directory, ready to be deployed to your preferred static hosting provider (e.g., Vercel, Netlify).
 
+## Unit Testing
+
+This project uses Vitest for unit testing with a jsdom environment.
+
+### Run tests
+
+```bash
+npm run test
+```
+
+### Watch mode
+
+```bash
+npm run test:watch
+```
+
+### Coverage
+
+```bash
+npm run test:coverage
+```
+
+### Test structure
+
+- Unit tests live next to source files (for example: `src/lib/GameEngine.test.ts`).
+- Shared test fixtures and helpers live in `src/test/fixtures/`.
+- Core business logic (especially `GameEngine` rules and settlements) should be covered for any behavior change.
+
+### Required pre-delivery checks
+
+Run these before opening a PR or deploying:
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm run test
+```
+
 ## Architecture
 
 This project recently transitioned from a traditional Node.js/WebSocket backend to a fully client-driven architecture using InstantDB. The core logic resides in:
