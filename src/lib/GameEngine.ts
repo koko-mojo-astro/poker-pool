@@ -4,6 +4,37 @@ import { Deck } from './Deck';
 import type { PairwiseSettlement, RoomConfig } from '../types';
 
 export class GameEngine {
+    private static getPlayerProfileId(player: any): string | null {
+        const profile = Array.isArray(player?.profile) ? player.profile?.[0] : player?.profile;
+        return profile?.id || null;
+    }
+
+    private static getPlayersInTurnOrder(players: any[], turnOrder: any): any[] {
+        if (!Array.isArray(players) || players.length === 0) return [];
+
+        let order = turnOrder || [];
+        if (!Array.isArray(order) && typeof order === 'object') {
+            order = Object.values(order);
+        }
+        if (!Array.isArray(order) || order.length === 0) return [...players];
+
+        const orderIndex = new Map(order.map((id: any, index: number) => [String(id), index]));
+        return [...players].sort((a: any, b: any) => {
+            const aIdx = orderIndex.get(String(a.id));
+            const bIdx = orderIndex.get(String(b.id));
+            return (aIdx ?? Number.MAX_SAFE_INTEGER) - (bIdx ?? Number.MAX_SAFE_INTEGER);
+        });
+    }
+
+    private static mapNetChangesToProfiles(players: any[], netChanges: Record<string, number>) {
+        return players.reduce((acc: Record<string, number>, player: any) => {
+            const profileId = this.getPlayerProfileId(player);
+            if (!profileId) return acc;
+
+            acc[profileId] = (acc[profileId] || 0) + (netChanges[player.id] || 0);
+            return acc;
+        }, {});
+    }
 
     static async startGame(db: any, roomData: any, initiatorId: string) {
         if (!roomData || roomData.status !== 'WAITING') return;
@@ -124,7 +155,8 @@ export class GameEngine {
 
         if (someoneWon && winningPlayerId) {
             // Compute settlements for history mapping
-            const settlements = this.computeSettlements(roomData.players, winningPlayerId, roomData.config);
+            const orderedPlayers = this.getPlayersInTurnOrder(roomData.players, roomData.turnOrder);
+            const settlements = this.computeSettlements(orderedPlayers, winningPlayerId, roomData.config);
             const netChanges: Record<string, number> = {};
             roomData.players.forEach((p: any) => netChanges[p.id] = 0);
 
@@ -133,12 +165,14 @@ export class GameEngine {
                 netChanges[s.toPlayerId] += s.amount;
             });
 
+            const netChangesByProfile = this.mapNetChangesToProfiles(roomData.players, netChanges);
+
             // Calculate new total settlements for the room
             const currentTotalSettlements = roomData.totalSettlements || {};
             const newTotalSettlements = { ...currentTotalSettlements };
 
-            Object.entries(netChanges).forEach(([playerId, amount]) => {
-                newTotalSettlements[playerId] = (newTotalSettlements[playerId] || 0) + amount;
+            Object.entries(netChangesByProfile).forEach(([profileId, amount]) => {
+                newTotalSettlements[profileId] = (newTotalSettlements[profileId] || 0) + amount;
             });
 
             txs.push(tx.rooms[roomData.id].update({
@@ -153,6 +187,7 @@ export class GameEngine {
 
             const playerSnapshots = roomData.players.map((p: any) => ({
                 id: p.id,
+                profileId: this.getPlayerProfileId(p),
                 name: p.profile?.[0]?.displayName || p.profile?.displayName || 'Player',
                 directJ: p.jokerBalls?.direct || 0,
                 allJ: p.jokerBalls?.all || 0,

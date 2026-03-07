@@ -73,7 +73,7 @@ export function useGameState() {
             : [];
 
         // Apply turn order if available
-        let sortedPlayersData = [...roomPlayersData];
+        const sortedPlayersData = [...roomPlayersData];
 
         let turnOrderArr = activeRoom.turnOrder || [];
         // InstantDB JSON arrays are usually returned as arrays, but fallback to Object.values just in case
@@ -102,6 +102,7 @@ export function useGameState() {
             winnerId: activeRoom.winnerId || null,
             players: sortedPlayersData.map((rp: any) => ({
                 id: rp.id,
+                profileId: rp.profile?.[0]?.id || rp.profile?.id || null,
                 name: rp.profile?.[0]?.displayName || rp.profile?.displayName || 'Unknown',
                 hand: rp.hand || [],
                 hasLicense: rp.hasLicense,

@@ -13,6 +13,7 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
     const winner = gameState.players.find(p => p.id === gameState.winnerId);
     const isWinner = playerId === gameState.winnerId;
     const settlements = gameState.settlements || [];
+    const myPlayer = gameState.players.find(p => p.id === playerId);
 
     if (!winner) return <div>Invalid Goal State</div>;
 
@@ -30,8 +31,10 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
     const myTotalReceive = myReceipts.reduce((sum, s) => sum + s.amount, 0);
     const myNet = myTotalReceive - myTotalPay;
 
-    // Total session net for me
-    const myTotalSessionNet = (gameState.totalSettlements || {})[playerId || ''] || 0;
+    // Total session net is persisted by stable profile id, with a fallback for older room-player keyed data.
+    const settlementKey = myPlayer?.profileId || playerId || '';
+    const sessionTotals = gameState.totalSettlements || {};
+    const myTotalSessionNet = sessionTotals[settlementKey] ?? sessionTotals[playerId || ''] ?? 0;
 
     const handleRestart = () => {
         sendMessage({ type: 'RESTART_GAME' });

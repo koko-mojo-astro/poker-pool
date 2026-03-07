@@ -10,35 +10,78 @@ interface LeaderboardModalProps {
 export function LeaderboardModal({ history, players, onClose }: LeaderboardModalProps) {
     const [expandedGame, setExpandedGame] = useState<number | null>(null);
 
+    const getSnapshotForPlayer = (playerId: string) => {
+        for (let i = history.length - 1; i >= 0; i--) {
+            const snapshot = history[i].playerSnapshots?.find((snap) => snap.id === playerId);
+            if (snapshot) return snapshot;
+        }
+        return null;
+    };
+
+    const getNameForProfile = (profileId: string, fallbackId?: string) => {
+        const currentPlayer = players.find((player) => player.profileId === profileId);
+        if (currentPlayer?.name) return currentPlayer.name;
+
+        for (let i = history.length - 1; i >= 0; i--) {
+            const snapshot = history[i].playerSnapshots?.find((snap) => snap.profileId === profileId);
+            if (snapshot?.name && snapshot.name !== 'Player' && snapshot.name !== 'Unknown') {
+                return snapshot.name;
+            }
+        }
+
+        return fallbackId ? fallbackId.slice(0, 8) : 'Unknown';
+    };
+
     const getPlayerName = (id: string) => {
         if (!id) return 'Unknown';
         const p = players.find(pl => pl.id === id);
-        return p ? p.name : id.slice(0, 8);
+        if (p) return p.name;
+
+        const snapshot = getSnapshotForPlayer(id);
+        if (snapshot?.profileId) return getNameForProfile(snapshot.profileId, id);
+        if (snapshot?.name && snapshot.name !== 'Player' && snapshot.name !== 'Unknown') return snapshot.name;
+
+        return id.slice(0, 8);
     };
 
-    // Count wins per player
+    // Count wins per persistent profile when available.
     const stats = history.reduce((acc, result) => {
-        const pName = getPlayerName(result.winnerId);
-        acc[pName] = (acc[pName] || 0) + 1;
+        const winnerSnapshot = result.playerSnapshots?.find((snap) => snap.id === result.winnerId);
+        const winnerKey = winnerSnapshot?.profileId || result.winnerId;
+        const winnerName = winnerSnapshot?.profileId
+            ? getNameForProfile(winnerSnapshot.profileId, result.winnerId)
+            : getPlayerName(result.winnerId);
+
+        if (!acc[winnerKey]) {
+            acc[winnerKey] = { name: winnerName, wins: 0 };
+        }
+        acc[winnerKey].wins += 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, { name: string; wins: number }>);
 
-    const sortedStats = Object.entries(stats).sort((a, b) => b[1] - a[1]);
+    const sortedStats = Object.entries(stats).sort((a, b) => b[1].wins - a[1].wins);
 
-    // Calculate Net Settlement from History
+    // Calculate session ledger from persistent profile ids when available.
     const netBalances: Record<string, number> = {};
     history.forEach(game => {
         if (game.netChanges) {
+            const snapshotByPlayerId = new Map(
+                (game.playerSnapshots || []).map((snapshot) => [snapshot.id, snapshot])
+            );
+
             Object.entries(game.netChanges).forEach(([playerId, amount]) => {
-                netBalances[playerId] = (netBalances[playerId] || 0) + amount;
+                const profileId = snapshotByPlayerId.get(playerId)?.profileId || playerId;
+                netBalances[profileId] = (netBalances[profileId] || 0) + amount;
             });
         }
     });
 
     // Create a list of players for settlement
     const settlementRows = Object.entries(netBalances).map(([id, amount]) => {
-        const player = players.find(p => p.id === id);
-        const name = player ? player.name : id.slice(0, 8);
+        const player = players.find(p => p.profileId === id || p.id === id);
+        const name = player?.profileId
+            ? getNameForProfile(player.profileId, id)
+            : (player?.name || getNameForProfile(id, id));
         return { id, name, amount };
     }).sort((a, b) => b.amount - a.amount);
 
@@ -121,8 +164,8 @@ export function LeaderboardModal({ history, players, onClose }: LeaderboardModal
                     </div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {sortedStats.map(([name, wins], i) => (
-                            <div key={name} style={{
+                        {sortedStats.map(([id, stat], i) => (
+                            <div key={id} style={{
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
@@ -144,10 +187,10 @@ export function LeaderboardModal({ history, players, onClose }: LeaderboardModal
                                         fontSize: '0.8rem',
                                         fontWeight: 'bold'
                                     }}>{i + 1}</span>
-                                    <span style={{ fontWeight: i === 0 ? 'bold' : 'normal', fontSize: '0.95rem' }}>{name}</span>
+                                    <span style={{ fontWeight: i === 0 ? 'bold' : 'normal', fontSize: '0.95rem' }}>{stat.name}</span>
                                 </div>
                                 <div style={{ fontWeight: 'bold', color: i === 0 ? '#fbbf24' : 'var(--text-main)' }}>
-                                    {wins} {wins === 1 ? 'Win' : 'Wins'}
+                                    {stat.wins} {stat.wins === 1 ? 'Win' : 'Wins'}
                                 </div>
                             </div>
                         ))}

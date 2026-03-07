@@ -1,0 +1,19 @@
+---
+description: Poker Pool architecture, game logic, InstantDB, and UI rules
+alwaysApply: true
+---
+
+# Poker Pool Project Rule
+
+- Build within the existing architecture: a Vite + React + TypeScript frontend with InstantDB as the only backend. Do not add a custom server, router, local persistence layer, or alternative state manager unless the user explicitly requests an architectural change.
+- Treat `src/lib/db.ts`, `src/instant.schema.ts`, `src/types.ts`, `src/hooks/useGameState.ts`, and `src/lib/GameEngine.ts` as the project spine. New features should extend these layers instead of bypassing them.
+- Preserve the core room lifecycle: authenticated user -> profile setup -> create/join room -> `WAITING` -> `PLAYING` -> `FINISHED` -> restart or exit. Screen selection is derived from auth/profile state plus `gameState.status`; do not introduce route-based navigation for this flow.
+- Keep business logic repo-aware: rooms represent live sessions, `roomPlayers` hold per-player live state, `matches` store immutable history, and `rooms.totalSettlements` stores cumulative session balance across multiple matches.
+- Keep game-state mutations inside `GameEngine`. All engine methods should validate preconditions first, compute the next state without mutating existing arrays in place, and persist related changes in one `db.transact([...txs])`.
+- Preserve poker invariants: `pottedCards` stores ranks, not card ids; potting a rank removes that rank from every player's hand; winning is detected when a player's filtered hand reaches zero after a pot; a successful first pot grants license; fouls revoke license; positive joker increments require license.
+- Preserve settlement invariants: base game losses pay the winner, `all` jokers charge all eligible opponents, `direct` jokers pay the player directly above in `turnOrder`, pairwise netting is centralized in `GameEngine.computeSettlements`, and match settlements are per-game while `totalSettlements` is cumulative for the room.
+- Follow InstantDB rules strictly: use `db.useAuth()` and `db.useQuery()` for reactive state, `db.queryOnce()` for one-shot lookups, `id()` for new entities, and schema updates in `src/instant.schema.ts` before querying/filtering on new fields. Index any field used for filtering or ordering.
+- Normalize InstantDB relation shapes defensively. Linked data may arrive as either an array or an object, especially for `profile`, `room`, and JSON-backed fields like `turnOrder`.
+- Follow React and TypeScript best practices: never call hooks conditionally, avoid `any` outside raw InstantDB boundaries, keep UI components focused on rendering and user intent, and route action handling through `sendMessage`.
+- Preserve the existing design system: dark-mode-only glassmorphism, shared tokens in `src/index.css`, reusable utility classes such as `.glass-panel`, `.btn-primary`, `.container`, and inline component styles for local layout. Do not add Tailwind, CSS Modules, or styled-components.
+- Validate substantive work with `npx tsc --noEmit` and `npm run lint`. If changing schema-dependent behavior, also verify the InstantDB query and transaction flow still matches the schema.

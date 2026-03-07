@@ -11,6 +11,7 @@ export interface Card {
 // --- Player Types ---
 export interface Player {
     id: string;
+    profileId?: string | null;
     name: string;
     // Note: Server sends Hand, Client receives Hand. 
     // Other players see cardCount, so we might need a separate PublicPlayer type for client view
@@ -53,6 +54,7 @@ export interface GameState {
 
 export interface PlayerSnapshot {
     id: string;
+    profileId?: string | null;
     name: string;
     directJ: number;
     allJ: number;

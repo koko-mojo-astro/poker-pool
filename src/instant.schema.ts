@@ -148,7 +148,7 @@ const _schema = i.schema({
 
 // This helps TypeScript display nicer intellisense
 type _AppSchema = typeof _schema;
-interface AppSchema extends _AppSchema { }
+type AppSchema = _AppSchema;
 const schema: AppSchema = _schema;
 
 export type { AppSchema };
