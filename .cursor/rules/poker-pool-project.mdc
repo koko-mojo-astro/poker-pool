@@ -16,4 +16,6 @@ alwaysApply: true
 - Normalize InstantDB relation shapes defensively. Linked data may arrive as either an array or an object, especially for `profile`, `room`, and JSON-backed fields like `turnOrder`.
 - Follow React and TypeScript best practices: never call hooks conditionally, avoid `any` outside raw InstantDB boundaries, keep UI components focused on rendering and user intent, and route action handling through `sendMessage`.
 - Preserve the existing design system: dark-mode-only glassmorphism, shared tokens in `src/index.css`, reusable utility classes such as `.glass-panel`, `.btn-primary`, `.container`, and inline component styles for local layout. Do not add Tailwind, CSS Modules, or styled-components.
-- Validate substantive work with `npx tsc --noEmit` and `npm run lint`. If changing schema-dependent behavior, also verify the InstantDB query and transaction flow still matches the schema.
+- Validate substantive work with `npx tsc --noEmit`, `npm run lint`, and `npm run test`. If changing schema-dependent behavior, also verify the InstantDB query and transaction flow still matches the schema.
+- For behavior changes in `src/lib/GameEngine.ts`, `src/hooks/useGameState.ts`, or settlement/card rules, add or update unit tests in `*.test.ts` files in the same area as the changed logic.
+- Keep unit tests deterministic: mock InstantDB writes (`db.transact`, `tx`, `id`) and randomness (`Math.random`) instead of relying on network state or non-deterministic behavior.

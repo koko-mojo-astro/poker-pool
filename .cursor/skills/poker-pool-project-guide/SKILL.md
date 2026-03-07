@@ -48,6 +48,16 @@ Use this skill when working anywhere in this repository.
 - Direct joker payouts depend on `turnOrder`; "above" means the previous player in the ordered array.
 - Settlement netting belongs in `GameEngine.computeSettlements()`.
 
+## Unit Testing Workflow
+
+- Add or update unit tests for every behavior change in `src/lib/GameEngine.ts`, `src/hooks/useGameState.ts`, `src/lib/Deck.ts`, or settlement/card-rule logic.
+- Keep test files colocated with implementation when possible (for example `src/lib/GameEngine.test.ts`) and use shared fixtures in `src/test/fixtures/`.
+- Keep tests deterministic:
+  - Mock InstantDB write surfaces (`db.transact`, `tx`, `id`) so tests remain unit-level.
+  - Stub randomness (`Math.random`) for deck/order related scenarios.
+  - Assert invariant outcomes (status transitions, potted-rank propagation, settlements, license/joker constraints), not implementation noise.
+- For bug fixes, write a failing test first when practical, then implement the fix.
+
 ## Implementation Patterns
 
 ### Adding or changing a game action
@@ -76,6 +86,7 @@ Use this skill when working anywhere in this repository.
 
 - Run `npx tsc --noEmit` after substantive edits.
 - Run `npm run lint` after substantive edits.
+- Run `npm run test` after substantive edits, and ensure changed behavior has matching unit coverage.
 - For gameplay changes, verify create/join/start/play/finish/restart/exit flows still behave correctly across multiple clients.
 
 ## Additional Resource
