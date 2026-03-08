@@ -211,7 +211,7 @@ export function useGameState() {
                     if (activeRoom && activePlayerId) await GameEngine.drawCard(db, roomData, activePlayerId);
                     break;
                 case 'POT_CARD':
-                    if (activeRoom && activePlayerId) await GameEngine.potCard(db, roomData, activePlayerId, msg.payload.cardId);
+                    if (activeRoom && activePlayerId) await GameEngine.potCard(db, roomData, activePlayerId, msg.payload);
                     break;
                 case 'MARK_FOUL':
                     if (activeRoom && activePlayerId) await GameEngine.markFoul(db, roomData, activePlayerId);

@@ -91,7 +91,7 @@ export type ClientMessage =
     | { type: 'CREATE_ROOM'; payload: { gameAmount: number; jokerAmount: number } }
     | { type: 'JOIN_ROOM'; payload: { roomId: string } }
     | { type: 'START_GAME' }
-    | { type: 'POT_CARD'; payload: { cardId: string } }
+    | { type: 'POT_CARD'; payload: { cardId: string } | { rank: Rank } }
     | { type: 'DRAW_CARD' }
     | { type: 'MARK_FOUL' }
     | { type: 'UPDATE_JOKER'; payload: { type: 'direct' | 'all'; delta: 1 | -1 } }

@@ -4,6 +4,21 @@ import { Deck } from './Deck';
 import type { PairwiseSettlement, RoomConfig } from '../types';
 
 export class GameEngine {
+    private static drawEligibleCard(deckInput: any[], pottedCards: any[]) {
+        const deck = [...(deckInput || [])];
+        let cardToDraw = null;
+
+        while (deck.length > 0) {
+            const candidate = deck.pop();
+            if (candidate && !(pottedCards || []).includes(candidate.rank)) {
+                cardToDraw = candidate;
+                break;
+            }
+        }
+
+        return { deck, cardToDraw };
+    }
+
     private static getPlayerProfileId(player: any): string | null {
         const profile = Array.isArray(player?.profile) ? player.profile?.[0] : player?.profile;
         return profile?.id || null;
@@ -82,21 +97,8 @@ export class GameEngine {
         const player = roomData.players.find((p: any) => p.id === playerId);
         if (!player) return;
 
-        const deck = [...roomData.deck];
-        let cardToDraw = null;
-        let found = false;
-        let attempts = 0;
-
-        while (attempts < 100 && deck.length > 0) {
-            cardToDraw = deck.pop();
-            if (cardToDraw && !(roomData.pottedCards || []).includes(cardToDraw.rank)) {
-                found = true;
-                break;
-            }
-            attempts++;
-        }
-
-        if (!found || !cardToDraw) return; // Error, no eligible cards
+        const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], roomData.pottedCards || []);
+        if (!cardToDraw) return; // Error, no eligible cards
 
         const newHand = [...(player.hand || []), cardToDraw];
 
@@ -106,23 +108,52 @@ export class GameEngine {
         ]);
     }
 
-    static async potCard(db: any, roomData: any, playerId: string, cardId: string) {
+    static async potCard(
+        db: any,
+        roomData: any,
+        playerId: string,
+        payload: { cardId?: string; rank?: string }
+    ) {
         const player = roomData.players.find((p: any) => p.id === playerId);
         if (!player || !player.hand) return;
 
-        const cardIndex = player.hand.findIndex((c: any) => c.id === cardId);
-        if (cardIndex === -1) return;
+        const actorHand = [...(player.hand || [])];
+        const cardId = payload?.cardId;
+        const explicitRank = payload?.rank;
+        let pottedRank: string | null = null;
+        let actorBaseHand = actorHand;
+        let actorHasPottedRank = false;
 
-        const card = player.hand[cardIndex];
-        const pottedRank = card.rank;
-        const newHand = [...player.hand];
-        newHand.splice(cardIndex, 1);
+        if (cardId) {
+            const cardIndex = actorHand.findIndex((c: any) => c.id === cardId);
+            if (cardIndex === -1) return;
+            pottedRank = actorHand[cardIndex].rank;
+            actorHasPottedRank = true;
+            actorBaseHand = [...actorHand];
+            actorBaseHand.splice(cardIndex, 1);
+        } else if (explicitRank) {
+            pottedRank = explicitRank;
+            actorHasPottedRank = actorHand.some((c: any) => c.rank === pottedRank);
+        } else {
+            return;
+        }
+
+        if (!pottedRank) return;
 
         const txs: any[] = [];
+        let resultingActorHasLicense = !!player.hasLicense;
 
-        // Grant license
-        if (!player.hasLicense) {
-            txs.push(tx.roomPlayers[playerId].update({ hasLicense: true }));
+        // Correct pot grants license; wrong-ball pot is treated as foul.
+        if (actorHasPottedRank) {
+            if (!player.hasLicense) {
+                txs.push(tx.roomPlayers[playerId].update({ hasLicense: true }));
+                resultingActorHasLicense = true;
+            }
+        } else {
+            if (player.hasLicense) {
+                txs.push(tx.roomPlayers[playerId].update({ hasLicense: false }));
+            }
+            resultingActorHasLicense = false;
         }
 
         // Add to potted cards
@@ -135,10 +166,12 @@ export class GameEngine {
         // Update hands of ALL players
         let someoneWon = false;
         let winningPlayerId: string | null = null;
+        const finalHandsByPlayer = new Map<string, any[]>();
 
         roomData.players.forEach((p: any) => {
-            const currentHand = p.id === playerId ? newHand : (p.hand || []);
+            const currentHand = p.id === playerId ? actorBaseHand : (p.hand || []);
             const filteredHand = currentHand.filter((c: any) => c.rank !== pottedRank);
+            finalHandsByPlayer.set(p.id, filteredHand);
 
             txs.push(tx.roomPlayers[p.id].update({ hand: filteredHand, cardCount: filteredHand.length }));
 
@@ -152,6 +185,19 @@ export class GameEngine {
                 }
             }
         });
+
+        // Wrong-ball penalty: draw one eligible card after global rank removal.
+        if (!actorHasPottedRank) {
+            const actorFilteredHand = finalHandsByPlayer.get(playerId) || [];
+            const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], newPottedCards);
+
+            if (cardToDraw) {
+                const penalizedHand = [...actorFilteredHand, cardToDraw];
+                finalHandsByPlayer.set(playerId, penalizedHand);
+                txs.push(tx.rooms[roomData.id].update({ deck }));
+                txs.push(tx.roomPlayers[playerId].update({ hand: penalizedHand, cardCount: penalizedHand.length }));
+            }
+        }
 
         if (someoneWon && winningPlayerId) {
             // Compute settlements for history mapping
@@ -191,8 +237,8 @@ export class GameEngine {
                 name: p.profile?.[0]?.displayName || p.profile?.displayName || 'Player',
                 directJ: p.jokerBalls?.direct || 0,
                 allJ: p.jokerBalls?.all || 0,
-                cardCount: p.id === playerId ? newHand.filter((c: any) => c.rank !== pottedRank).length : p.hand.filter((c: any) => c.rank !== pottedRank).length,
-                hasLicense: p.id === playerId ? true : p.hasLicense
+                cardCount: (finalHandsByPlayer.get(p.id) || []).length,
+                hasLicense: p.id === playerId ? resultingActorHasLicense : p.hasLicense
             }));
 
             // Record the match securely
@@ -230,19 +276,8 @@ export class GameEngine {
         ];
 
         // Try to draw penalty card
-        const deck = [...(roomData.deck || [])];
-        let cardToDraw = null;
-        let found = false;
-
-        while (deck.length > 0) {
-            cardToDraw = deck.pop();
-            if (cardToDraw && !(roomData.pottedCards || []).includes(cardToDraw.rank)) {
-                found = true;
-                break;
-            }
-        }
-
-        if (found && cardToDraw) {
+        const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], roomData.pottedCards || []);
+        if (cardToDraw) {
             const newHand = [...(player.hand || []), cardToDraw];
             txs.push(tx.rooms[roomData.id].update({ deck }));
             txs.push(tx.roomPlayers[playerId].update({ hand: newHand, cardCount: newHand.length }));

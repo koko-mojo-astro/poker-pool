@@ -121,7 +121,7 @@ function App() {
         zIndex: 10
       }}>
         <p style={{ margin: 0 }}>
-          Made with <span style={{ color: '#a78bfa' }}>💜</span> by <strong>koko-mojo-astro</strong> &bull; v1.1.1
+          Made with <span style={{ color: '#a78bfa' }}>💜</span> by <strong>koko-mojo-astro</strong> &bull; v{import.meta.env.VITE_APP_VERSION ?? '0.0.0'}
         </p>
       </footer>
     </>
