@@ -163,7 +163,7 @@ describe('GameEngine', () => {
       totalSettlements: {},
     });
 
-    await GameEngine.potCard(db, roomData, 'p1', 'p1-a');
+    await GameEngine.potCard(db, roomData, 'p1', { cardId: 'p1-a' });
 
     const txs = db.transact.mock.calls[0][0] as TxOp[];
     const p1Updates = txs.filter((op) => op.entity === 'roomPlayers' && op.id === 'p1' && op.action === 'update');
@@ -196,6 +196,68 @@ describe('GameEngine', () => {
     const txs = db.transact.mock.calls[0][0] as TxOp[];
     const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
     expect(roomUpdate?.payload?.status).toBe('WAITING');
+  });
+
+  it('allows wrong-ball potting, removes rank globally, and draws a penalty card without granting license', async () => {
+    const db = createMockDb();
+    const p1 = createPlayer({
+      id: 'p1',
+      hasLicense: false,
+      hand: [createCard('2', 'spades', 'p1-2')],
+    });
+    const p2 = createPlayer({
+      id: 'p2',
+      hand: [createCard('Q', 'hearts', 'p2-q'), createCard('5', 'clubs', 'p2-5')],
+    });
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      players: [p1, p2],
+      pottedCards: [],
+      deck: [createCard('Q', 'diamonds', 'skip-q'), createCard('K', 'clubs', 'draw-k')],
+    });
+
+    await GameEngine.potCard(db, roomData, 'p1', { rank: 'Q' });
+
+    expect(db.transact).toHaveBeenCalledTimes(1);
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+
+    const pottedUpdate = findUpdateOp(txs, 'rooms', roomData.id, (op) => Array.isArray(op.payload?.pottedCards as unknown[]));
+    const deckUpdate = findUpdateOp(txs, 'rooms', roomData.id, (op) => Array.isArray(op.payload?.deck as unknown[]));
+    const p1Updates = txs.filter((op) => op.entity === 'roomPlayers' && op.id === 'p1' && op.action === 'update');
+    const p2Update = findUpdateOp(txs, 'roomPlayers', 'p2');
+
+    expect(pottedUpdate?.payload?.pottedCards).toEqual(['Q']);
+    expect((p2Update?.payload?.hand as unknown[]).length).toBe(1);
+
+    expect(p1Updates.some((op) => op.payload?.hasLicense === true)).toBe(false);
+    expect((p1Updates[p1Updates.length - 1].payload?.hand as unknown[]).length).toBe(2);
+    expect((deckUpdate?.payload?.deck as unknown[]).length).toBe(1);
+  });
+
+  it('treats wrong-ball pot as foul and revokes existing license', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      players: [
+        createPlayer({
+          id: 'p1',
+          hasLicense: true,
+          hand: [createCard('4', 'spades', 'p1-4')],
+        }),
+        createPlayer({ id: 'p2', hand: [createCard('7', 'hearts', 'p2-7')] }),
+      ],
+      pottedCards: [],
+      deck: [createCard('K', 'clubs', 'draw-k')],
+    });
+
+    await GameEngine.potCard(db, roomData, 'p1', { rank: '7' });
+
+    expect(db.transact).toHaveBeenCalledTimes(1);
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const p1Updates = txs.filter((op) => op.entity === 'roomPlayers' && op.id === 'p1' && op.action === 'update');
+
+    expect(p1Updates.some((op) => op.payload?.hasLicense === false)).toBe(true);
+    expect(p1Updates.some((op) => op.payload?.hasLicense === true)).toBe(false);
   });
 
   it('blocks positive joker increment without license', async () => {

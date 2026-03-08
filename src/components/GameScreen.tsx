@@ -1,9 +1,10 @@
 import React from 'react';
-import type { GameState, ClientMessage } from '../types';
+import type { GameState, ClientMessage, Rank } from '../types';
 import { Card } from './Card';
 import { useToast } from './Toast';
 import { useState } from 'react';
 import { LeaderboardModal } from './LeaderboardModal';
+import { WrongBallPotModal } from './WrongBallPotModal';
 
 interface GameScreenProps {
     gameState: GameState;
@@ -16,10 +17,30 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
     const myPlayer = gameState.players.find(p => p.id === playerId);
     const otherPlayers = gameState.players.filter(p => p.id !== playerId);
     const [showLeaderboard, setShowLeaderboard] = useState(false);
+    const [showWrongBallModal, setShowWrongBallModal] = useState(false);
+    const [wrongPotRank, setWrongPotRank] = useState<Rank>('A');
+    const rankOrder: Rank[] = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
     const handlePot = (cardId: string) => {
         sendMessage({ type: 'POT_CARD', payload: { cardId } });
         showToast('Potting card...', 'info');
+    };
+
+    const ownedRanks = new Set((myPlayer?.hand || []).map(card => card.rank));
+    const pottedRanks = new Set(gameState.pottedCards);
+    const wrongPotOptions = rankOrder.filter(rank => !ownedRanks.has(rank) && !pottedRanks.has(rank));
+    const selectedWrongPotRank = wrongPotOptions.includes(wrongPotRank)
+        ? wrongPotRank
+        : (wrongPotOptions[0] || 'A');
+
+    const handleWrongBallPot = () => {
+        if (!wrongPotOptions.includes(selectedWrongPotRank)) return;
+        sendMessage({ type: 'POT_CARD', payload: { rank: selectedWrongPotRank } });
+        const followup = myPlayer?.hasLicense
+            ? `Wrong ball ${selectedWrongPotRank} potted: foul applied, license revoked, drawing a card...`
+            : `Wrong ball ${selectedWrongPotRank} potted: no license gained, drawing a card...`;
+        showToast(followup, 'error');
+        setShowWrongBallModal(false);
     };
 
     const handleDraw = () => {
@@ -188,8 +209,24 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
                         )}
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={handleDraw} className="btn-primary" style={{ padding: '8px 16px', fontSize: '0.9rem' }}>
-                            Draw
+                        {!myPlayer.hasLicense && (
+                            <button onClick={handleDraw} className="btn-primary" style={{ padding: '8px 16px', fontSize: '0.9rem' }}>
+                                Draw
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setShowWrongBallModal(true)}
+                            style={{
+                                background: 'rgba(239, 68, 68, 0.15)',
+                                border: '1px solid rgba(239, 68, 68, 0.7)',
+                                color: 'var(--danger)',
+                                borderRadius: '8px',
+                                padding: '8px 12px',
+                                fontSize: '0.85rem',
+                                fontWeight: 800
+                            }}
+                        >
+                            Wrong Ball
                         </button>
                         {myPlayer.hasLicense && (
                             <button onClick={handleFoul} style={{ background: 'transparent', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: '8px', padding: '8px 16px', fontSize: '0.9rem' }}>
@@ -263,6 +300,16 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
                     history={gameState.history || []}
                     players={gameState.players}
                     onClose={() => setShowLeaderboard(false)}
+                />
+            )}
+            {showWrongBallModal && (
+                <WrongBallPotModal
+                    isLicensed={myPlayer.hasLicense}
+                    options={wrongPotOptions}
+                    selectedRank={selectedWrongPotRank}
+                    onSelect={setWrongPotRank}
+                    onClose={() => setShowWrongBallModal(false)}
+                    onConfirm={handleWrongBallPot}
                 />
             )}
         </div>
