@@ -58,6 +58,12 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
         sendMessage({ type: 'UPDATE_JOKER', payload: { type, delta } });
     };
 
+    const getSignedJokerColor = (value: number, positiveColor: string) => {
+        if (value > 0) return positiveColor;
+        if (value < 0) return 'var(--danger)';
+        return 'var(--text-muted)';
+    };
+
     if (!myPlayer) return <div>Loading player...</div>;
 
     return (
@@ -190,7 +196,7 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
                                 <span style={{ color: 'var(--danger)', fontSize: '0.7rem' }}>✗ NO LIC</span>
                             )}
                             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                J: <span style={{ color: 'white', fontWeight: 'bold' }}>{p.jokerBalls.direct}</span> / <span style={{ color: 'white', fontWeight: 'bold' }}>{p.jokerBalls.all}</span>
+                                J: <span style={{ color: getSignedJokerColor(p.jokerBalls.direct, '#fbbf24'), fontWeight: 'bold' }}>{p.jokerBalls.direct}</span> / <span style={{ color: getSignedJokerColor(p.jokerBalls.all, '#a78bfa'), fontWeight: 'bold' }}>{p.jokerBalls.all}</span>
                             </div>
                         </div>
                     </div>
@@ -265,10 +271,9 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <button
                                 onClick={() => handleUpdateJoker('direct', -1)}
-                                disabled={myPlayer.jokerBalls.direct <= 0}
                                 style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}
                             >-</button>
-                            <span style={{ fontWeight: '800', fontSize: '1.1rem', minWidth: '1.2rem', textAlign: 'center' }}>{myPlayer.jokerBalls.direct}</span>
+                            <span style={{ fontWeight: '800', fontSize: '1.1rem', minWidth: '2.5rem', textAlign: 'center', color: getSignedJokerColor(myPlayer.jokerBalls.direct, '#fbbf24') }}>{myPlayer.jokerBalls.direct}</span>
                             <button
                                 onClick={() => handleUpdateJoker('direct', 1)}
                                 disabled={!myPlayer.hasLicense}
@@ -281,10 +286,9 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <button
                                 onClick={() => handleUpdateJoker('all', -1)}
-                                disabled={myPlayer.jokerBalls.all <= 0}
                                 style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}
                             >-</button>
-                            <span style={{ fontWeight: '800', fontSize: '1.1rem', minWidth: '1.2rem', textAlign: 'center' }}>{myPlayer.jokerBalls.all}</span>
+                            <span style={{ fontWeight: '800', fontSize: '1.1rem', minWidth: '2.5rem', textAlign: 'center', color: getSignedJokerColor(myPlayer.jokerBalls.all, '#a78bfa') }}>{myPlayer.jokerBalls.all}</span>
                             <button
                                 onClick={() => handleUpdateJoker('all', 1)}
                                 disabled={!myPlayer.hasLicense}

@@ -274,6 +274,146 @@ describe('GameEngine', () => {
     expect(db.transact).toHaveBeenCalledTimes(1);
   });
 
+  it('allows negative joker values but still blocks recovery without license', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      players: [createPlayer({ id: 'p1', hasLicense: false, jokerBalls: { direct: 0, all: 0 } }), createPlayer({ id: 'p2' })],
+    });
+
+    await GameEngine.updateJokerCount(db, roomData, 'p1', 'direct', -1);
+    expect(db.transact).toHaveBeenCalledTimes(1);
+    let txs = db.transact.mock.calls[0][0] as TxOp[];
+    expect(findUpdateOp(txs, 'roomPlayers', 'p1')?.payload?.jokerBalls).toEqual({ direct: -1, all: 0 });
+
+    db.transact.mockClear();
+    roomData.players[0].jokerBalls.direct = -1;
+
+    await GameEngine.updateJokerCount(db, roomData, 'p1', 'direct', 1);
+    expect(db.transact).not.toHaveBeenCalled();
+
+    roomData.players[0].hasLicense = true;
+    await GameEngine.updateJokerCount(db, roomData, 'p1', 'direct', 1);
+    expect(db.transact).toHaveBeenCalledTimes(1);
+    txs = db.transact.mock.calls[0][0] as TxOp[];
+    expect(findUpdateOp(txs, 'roomPlayers', 'p1')?.payload?.jokerBalls).toEqual({ direct: 0, all: 0 });
+  });
+
+  it('preserves positive direct settlements', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2', 'p3'],
+      totalSettlements: {},
+      players: [
+        createPlayer({ id: 'p1', hand: [createCard('K', 'spades', 'p1-k')], profile: [{ id: 'profile-1', displayName: 'Alice' }] }),
+        createPlayer({ id: 'p2', hand: [createCard('Q', 'hearts', 'p2-q')], jokerBalls: { direct: 1, all: 0 }, profile: [{ id: 'profile-2', displayName: 'Bob' }] }),
+        createPlayer({ id: 'p3', hand: [createCard('A', 'clubs', 'p3-a')], profile: [{ id: 'profile-3', displayName: 'Cara' }] }),
+      ],
+    });
+
+    await GameEngine.potCard(db, roomData, 'p3', { cardId: 'p3-a' });
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id, (op) => op.payload?.status === 'FINISHED');
+    const matchUpdate = findUpdateOp(txs, 'matches', 'match-1');
+    const settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
+
+    expect(settlements).toEqual(expect.arrayContaining([
+      { fromPlayerId: 'p1', toPlayerId: 'p2', amount: 4, breakdown: '$4.00' },
+      { fromPlayerId: 'p1', toPlayerId: 'p3', amount: 10, breakdown: '$10.00' },
+      { fromPlayerId: 'p2', toPlayerId: 'p3', amount: 10, breakdown: '$10.00' },
+    ]));
+    expect(roomUpdate?.payload?.totalSettlements).toEqual({ 'profile-1': -14, 'profile-2': -6, 'profile-3': 20 });
+  });
+
+  it('reverses direct settlement when the joker count is negative', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2', 'p3'],
+      totalSettlements: {},
+      players: [
+        createPlayer({ id: 'p1', hand: [createCard('A', 'spades', 'p1-a')], profile: [{ id: 'profile-1', displayName: 'Alice' }] }),
+        createPlayer({ id: 'p2', hand: [createCard('K', 'hearts', 'p2-k')], jokerBalls: { direct: -1, all: 0 }, profile: [{ id: 'profile-2', displayName: 'Bob' }] }),
+        createPlayer({ id: 'p3', hand: [createCard('Q', 'clubs', 'p3-q')], profile: [{ id: 'profile-3', displayName: 'Cara' }] }),
+      ],
+    });
+
+    await GameEngine.potCard(db, roomData, 'p1', { cardId: 'p1-a' });
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id, (op) => op.payload?.status === 'FINISHED');
+    const matchUpdate = findUpdateOp(txs, 'matches', 'match-1');
+    const settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
+    const playerSnapshots = matchUpdate?.payload?.playerSnapshots as Array<{ id: string; directJ: number }>;
+
+    expect(settlements).toEqual(expect.arrayContaining([
+      { fromPlayerId: 'p2', toPlayerId: 'p1', amount: 14, breakdown: '$14.00' },
+      { fromPlayerId: 'p3', toPlayerId: 'p1', amount: 10, breakdown: '$10.00' },
+    ]));
+    expect(playerSnapshots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'p2', directJ: -1 }),
+    ]));
+    expect(roomUpdate?.payload?.totalSettlements).toEqual({ 'profile-1': 24, 'profile-2': -14, 'profile-3': -10 });
+  });
+
+  it('reverses winner and loser all-joker settlements when the joker count is negative', async () => {
+    const db = createMockDb();
+    const winnerAllRoom = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2', 'p3'],
+      totalSettlements: {},
+      players: [
+        createPlayer({ id: 'p1', hand: [createCard('A', 'spades', 'winner-a')], jokerBalls: { direct: 0, all: -1 }, profile: [{ id: 'profile-1', displayName: 'Alice' }] }),
+        createPlayer({ id: 'p2', hand: [createCard('K', 'hearts', 'winner-k')], profile: [{ id: 'profile-2', displayName: 'Bob' }] }),
+        createPlayer({ id: 'p3', hand: [createCard('Q', 'clubs', 'winner-q')], profile: [{ id: 'profile-3', displayName: 'Cara' }] }),
+      ],
+    });
+
+    await GameEngine.potCard(db, winnerAllRoom, 'p1', { cardId: 'winner-a' });
+
+    let txs = db.transact.mock.calls[0][0] as TxOp[];
+    let roomUpdate = findUpdateOp(txs, 'rooms', winnerAllRoom.id, (op) => op.payload?.status === 'FINISHED');
+    let matchUpdate = findUpdateOp(txs, 'matches', 'match-1');
+    let settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
+
+    expect(settlements).toEqual(expect.arrayContaining([
+      { fromPlayerId: 'p2', toPlayerId: 'p1', amount: 8, breakdown: '$10.00 −$2.00 offset' },
+      { fromPlayerId: 'p3', toPlayerId: 'p1', amount: 8, breakdown: '$10.00 −$2.00 offset' },
+    ]));
+    expect(roomUpdate?.payload?.totalSettlements).toEqual({ 'profile-1': 16, 'profile-2': -8, 'profile-3': -8 });
+
+    db.transact.mockClear();
+    const loserAllRoom = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2', 'p3'],
+      totalSettlements: {},
+      players: [
+        createPlayer({ id: 'p1', hand: [createCard('A', 'diamonds', 'loser-a')], profile: [{ id: 'profile-1', displayName: 'Alice' }] }),
+        createPlayer({ id: 'p2', hand: [createCard('K', 'spades', 'loser-k')], jokerBalls: { direct: 0, all: -1 }, profile: [{ id: 'profile-2', displayName: 'Bob' }] }),
+        createPlayer({ id: 'p3', hand: [createCard('Q', 'hearts', 'loser-q')], profile: [{ id: 'profile-3', displayName: 'Cara' }] }),
+      ],
+    });
+
+    await GameEngine.potCard(db, loserAllRoom, 'p1', { cardId: 'loser-a' });
+
+    txs = db.transact.mock.calls[0][0] as TxOp[];
+    roomUpdate = findUpdateOp(txs, 'rooms', loserAllRoom.id, (op) => op.payload?.status === 'FINISHED');
+    matchUpdate = findUpdateOp(txs, 'matches', 'match-2');
+    settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
+
+    expect(settlements).toEqual(expect.arrayContaining([
+      { fromPlayerId: 'p2', toPlayerId: 'p1', amount: 12, breakdown: '$12.00' },
+      { fromPlayerId: 'p3', toPlayerId: 'p1', amount: 10, breakdown: '$10.00' },
+      { fromPlayerId: 'p2', toPlayerId: 'p3', amount: 2, breakdown: '$2.00' },
+    ]));
+    expect(roomUpdate?.payload?.totalSettlements).toEqual({ 'profile-1': 22, 'profile-2': -14, 'profile-3': -8 });
+  });
+
   it('deletes full room when creator exits and only own record when guest exits', async () => {
     const db = createMockDb();
     const roomData = createRoomData({

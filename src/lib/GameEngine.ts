@@ -295,8 +295,6 @@ export class GameEngine {
         const currentVal = player.jokerBalls?.[type] || 0;
         const newVal = currentVal + delta;
 
-        if (newVal < 0) return;
-
         await db.transact([
             tx.roomPlayers[playerId].update({
                 jokerBalls: {
@@ -363,6 +361,16 @@ export class GameEngine {
             const key = `${fromId}->${toId}`;
             flows[key] = (flows[key] || 0) + amount;
         };
+        const addSignedFlow = (fromId: string, toId: string, signedAmount: number) => {
+            if (!signedAmount) return;
+
+            if (signedAmount > 0) {
+                addFlow(fromId, toId, signedAmount);
+                return;
+            }
+
+            addFlow(toId, fromId, Math.abs(signedAmount));
+        };
 
         const winner = players.find(p => p.id === winnerId)!;
 
@@ -370,27 +378,36 @@ export class GameEngine {
             if (p.id !== winnerId) addFlow(p.id, winnerId, gameAmount);
         });
 
-        if (winner.jokerBalls?.all > 0) {
-            players.forEach(p => {
-                if (p.id !== winnerId) addFlow(p.id, winnerId, jokerAmount * winner.jokerBalls.all);
-            });
-        }
+        const winnerAll = winner.jokerBalls?.all || 0;
+        players.forEach(p => {
+            if (p.id !== winnerId) {
+                addSignedFlow(p.id, winnerId, jokerAmount * winnerAll);
+            }
+        });
 
         players.forEach((p, idx) => {
-            if (p.jokerBalls?.direct > 0) {
-                const aboveIdx = (idx - 1 + numPlayers) % numPlayers;
-                const abovePlayer = players[aboveIdx];
-                const amount = jokerAmount * (numPlayers - 1) * p.jokerBalls.direct;
-                addFlow(abovePlayer.id, p.id, amount);
-            }
+            const directCount = p.jokerBalls?.direct || 0;
+            const aboveIdx = (idx - 1 + numPlayers) % numPlayers;
+            const abovePlayer = players[aboveIdx];
+            const signedAmount = jokerAmount * (numPlayers - 1) * directCount;
+            addSignedFlow(abovePlayer.id, p.id, signedAmount);
         });
 
         players.forEach(loser => {
             if (loser.id === winnerId) return;
-            if (loser.jokerBalls?.all > 0) {
+            const loserAll = loser.jokerBalls?.all || 0;
+            if (loserAll > 0) {
                 players.forEach(otherLoser => {
                     if (otherLoser.id === winnerId || otherLoser.id === loser.id) return;
-                    addFlow(otherLoser.id, loser.id, jokerAmount * loser.jokerBalls.all);
+                    addFlow(otherLoser.id, loser.id, jokerAmount * loserAll);
+                });
+                return;
+            }
+
+            if (loserAll < 0) {
+                players.forEach(otherPlayer => {
+                    if (otherPlayer.id === loser.id) return;
+                    addSignedFlow(otherPlayer.id, loser.id, jokerAmount * loserAll);
                 });
             }
         });
