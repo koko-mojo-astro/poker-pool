@@ -1,4 +1,4 @@
-name: Bump Version and Deploy to Render
+name: Bump Version and Auto Deploy
 
 on:
   push:
@@ -84,21 +84,12 @@ jobs:
           git push origin main
           git push origin --tags
 
-  deploy-to-render:
+  render-auto-deploy:
     needs: bump-version
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Trigger Render Deployment
-        env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+      - name: Note Render static-site auto deploy
         run: |
-          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
-            echo "No Render deploy hook secret found. Skipping deployment."
-            exit 0
-          fi
-          echo "Triggering Render deployment for version ${{ needs.bump-version.outputs.new_version }}..."
-          curl -X POST "$RENDER_DEPLOY_HOOK" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache": false}'
-          echo "Deployment triggered successfully!"
+          echo "Render Static Site auto-deploys from the main branch."
+          echo "Version ${{ needs.bump-version.outputs.new_version }} is now available for Render to build automatically."

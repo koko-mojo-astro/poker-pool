@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: poker-pool-static
+    runtime: static
+    branch: main
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+      - key: VITE_INSTANT_APP_ID
+        sync: false
+      - key: VITE_INSTANT_CLIENT_NAME
+        sync: false

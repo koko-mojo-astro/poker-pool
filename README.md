@@ -7,7 +7,7 @@ A sleek, real-time poker pool management tool featuring automated payout calcula
 - **Real-Time Synchronization:** Instant updates across all connected clients using InstantDB.
 - **Automated Payouts:** Calculates complex settlements dynamically based on Direct and All Joker game rules.
 - **Session Persistence:** Game state, history, and player profiles are securely saved and restored across sessions.
-- **Modern UI/UX:** Built with TailwindCSS leveraging a sleek glassmorphism aesthetic.
+- **Modern UI/UX:** Built with a custom glassmorphism design system and shared CSS tokens.
 - **Authentication:** Secure Google OAuth integration powered by InstantDB.
 - **Comprehensive History:** Built-in leaderboards, game history tracking, and detailed pairwise settlement breakdowns.
 
@@ -15,8 +15,7 @@ A sleek, real-time poker pool management tool featuring automated payout calcula
 
 - **Frontend:** React, TypeScript, Vite
 - **Backend/Database:** InstantDB (Client-side real-time database)
-- **Styling:** TailwindCSS
-- **Icons:** Lucide React
+- **Styling:** Custom CSS
 
 ## Getting Started
 
@@ -39,9 +38,11 @@ A sleek, real-time poker pool management tool featuring automated payout calcula
    ```
 
 3. Set up environment variables:
-   Create a `.env` file in the root directory and add your InstantDB App ID:
+   Create a `.env.local` file in the root directory:
    ```env
-   VITE_INSTANTDB_APP_ID=your_app_id_here
+   VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id
+   VITE_INSTANT_APP_ID=your_instant_app_id
+   VITE_INSTANT_CLIENT_NAME=google-web
    ```
 
 4. Start the development server:
@@ -56,7 +57,20 @@ To create a production build:
 npm run build
 ```
 
-The output will be generated in the `dist` directory, ready to be deployed to your preferred static hosting provider (e.g., Vercel, Netlify).
+The output will be generated in the `dist` directory, ready to be deployed to a static hosting provider.
+
+### Render Static Site
+
+This app should be deployed on Render as a Static Site, not a Web Service.
+
+- Build Command: `npm install && npm run build`
+- Publish Directory: `dist`
+- Runtime env vars:
+  - `VITE_GOOGLE_CLIENT_ID`
+  - `VITE_INSTANT_APP_ID`
+  - `VITE_INSTANT_CLIENT_NAME`
+
+The repo includes `render.yaml` to codify the expected Render configuration.
 
 ## Unit Testing
 
