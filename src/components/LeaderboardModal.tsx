@@ -85,6 +85,12 @@ export function LeaderboardModal({ history, players, onClose }: LeaderboardModal
         return { id, name, amount };
     }).sort((a, b) => b.amount - a.amount);
 
+    const getSignedJokerColor = (value: number, positiveColor: string) => {
+        if (value > 0) return positiveColor;
+        if (value < 0) return 'var(--danger)';
+        return 'var(--text-muted)';
+    };
+
     return (
         <div style={{
             position: 'fixed',
@@ -233,6 +239,7 @@ export function LeaderboardModal({ history, players, onClose }: LeaderboardModal
                                     <GameDetailPanel
                                         result={res}
                                         getPlayerName={getPlayerName}
+                                        getSignedJokerColor={getSignedJokerColor}
                                     />
                                 )}
                             </div>
@@ -246,9 +253,10 @@ export function LeaderboardModal({ history, players, onClose }: LeaderboardModal
     );
 }
 
-function GameDetailPanel({ result, getPlayerName }: {
+function GameDetailPanel({ result, getPlayerName, getSignedJokerColor }: {
     result: GameResult;
     getPlayerName: (id: string) => string;
+    getSignedJokerColor: (value: number, positiveColor: string) => string;
 }) {
     const snapshots = result.playerSnapshots || [];
     const settlements = result.settlements || [];
@@ -293,8 +301,8 @@ function GameDetailPanel({ result, getPlayerName }: {
                                     return currentName;
                                 })()} {snap.id === result.winnerId && '👑'}
                             </div>
-                            <div style={{ textAlign: 'center', fontWeight: 'bold', color: snap.directJ > 0 ? '#fbbf24' : 'var(--text-muted)' }}>{snap.directJ}</div>
-                            <div style={{ textAlign: 'center', fontWeight: 'bold', color: snap.allJ > 0 ? '#a78bfa' : 'var(--text-muted)' }}>{snap.allJ}</div>
+                            <div style={{ textAlign: 'center', fontWeight: 'bold', color: getSignedJokerColor(snap.directJ, '#fbbf24') }}>{snap.directJ}</div>
+                            <div style={{ textAlign: 'center', fontWeight: 'bold', color: getSignedJokerColor(snap.allJ, '#a78bfa') }}>{snap.allJ}</div>
                             <div style={{ textAlign: 'center', fontWeight: 'bold', color: snap.cardCount === 0 ? 'var(--success)' : 'var(--text-muted)' }}>{snap.cardCount}</div>
                         </div>
                     ))}

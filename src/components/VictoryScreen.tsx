@@ -40,6 +40,12 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
         sendMessage({ type: 'RESTART_GAME' });
     };
 
+    const getSignedJokerColor = (value: number, positiveColor: string) => {
+        if (value > 0) return positiveColor;
+        if (value < 0) return 'var(--danger)';
+        return 'var(--text-muted)';
+    };
+
     return (
         <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '2rem', paddingBottom: '4rem' }}>
             <h1 className="animate-fade-in" style={{ fontSize: '3rem', marginBottom: '1rem', background: 'linear-gradient(to right, #fbbf24, #d97706)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
@@ -73,8 +79,8 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
                                 {p.name} {p.id === gameState.winnerId && '👑'}
                                 {p.id === playerId && <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}> (You)</span>}
                             </div>
-                            <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: p.jokerBalls.direct > 0 ? '#fbbf24' : 'var(--text-muted)' }}>{p.jokerBalls.direct}</div>
-                            <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: p.jokerBalls.all > 0 ? '#a78bfa' : 'var(--text-muted)' }}>{p.jokerBalls.all}</div>
+                            <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: getSignedJokerColor(p.jokerBalls.direct, '#fbbf24') }}>{p.jokerBalls.direct}</div>
+                            <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: getSignedJokerColor(p.jokerBalls.all, '#a78bfa') }}>{p.jokerBalls.all}</div>
                             <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: p.cardCount === 0 ? 'var(--success)' : 'var(--text-muted)' }}>{p.cardCount}</div>
                         </div>
                     ))}
