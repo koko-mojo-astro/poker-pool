@@ -181,7 +181,9 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
                 )}
 
                 <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                    <button onClick={handleRestart} className="btn-primary" style={{ flex: 1 }}>Play Again</button>
+                    {myPlayer?.isCreator && (
+                        <button onClick={handleRestart} className="btn-primary" style={{ flex: 1 }}>Play Again</button>
+                    )}
                     <button onClick={() => setShowLeaderboard(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '12px 24px', borderRadius: '12px', color: 'white', fontWeight: 'bold' }}>
                         🏆 Leaderboard
                     </button>
