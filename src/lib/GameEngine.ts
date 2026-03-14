@@ -177,6 +177,19 @@ export class GameEngine {
             ...player.jokerBalls,
             [payload.type]: currentValue + payload.delta,
         };
+
+        // Minus joker while licensed: revoke license and draw one penalty card (mirrors foul behaviour)
+        if (payload.delta === -1 && player.hasLicense) {
+            player.hasLicense = false;
+
+            const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], roomData.pottedCards || []);
+            roomData.deck = deck;
+
+            if (cardToDraw) {
+                player.hand = [...(player.hand || []), cardToDraw];
+                player.cardCount = player.hand.length;
+            }
+        }
     }
 
     static applyVisitActions(roomData: any, playerId: string, actions: VisitAction[]) {

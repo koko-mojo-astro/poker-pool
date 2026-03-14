@@ -74,6 +74,14 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
 
     const handleUpdateJoker = (type: 'direct' | 'all', delta: 1 | -1) => {
         if (isCommittingDraft) return;
+
+        if (delta === -1) {
+            const msg = myPlayer.hasLicense
+                ? `Decrementing this joker will remove your license and you will draw a penalty card. Continue?`
+                : `Decrement ${type.toUpperCase()} joker ball? Continue?`;
+            if (!confirm(msg)) return;
+        }
+
         void Promise.resolve(sendMessage({ type: 'UPDATE_JOKER', payload: { type, delta } }));
     };
 
