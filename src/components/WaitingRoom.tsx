@@ -1,6 +1,7 @@
 import type { GameState, ClientMessage } from '../types';
 import { useState } from 'react';
 import { LeaderboardModal } from './LeaderboardModal';
+import { useAlert } from './AlertContext';
 
 interface WaitingRoomProps {
     gameState: GameState;
@@ -9,6 +10,7 @@ interface WaitingRoomProps {
 }
 
 export function WaitingRoom({ gameState, playerId, sendMessage }: WaitingRoomProps) {
+    const { showConfirm } = useAlert();
     const isCreator = gameState.players.find(p => p.id === playerId)?.isCreator;
     const canStart = gameState.players.length >= 2;
     const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -29,11 +31,10 @@ export function WaitingRoom({ gameState, playerId, sendMessage }: WaitingRoomPro
                         🏆 Leaderboard
                     </button>
                     <button
-                        onClick={() => {
+                        onClick={async () => {
                             const msg = isCreator ? 'Exit & disband room?' : 'Leave the waiting room?';
-                            if (confirm(msg)) {
-                                sendMessage({ type: 'EXIT_ROOM' });
-                            }
+                            const ok = await showConfirm(msg);
+                            if (ok) sendMessage({ type: 'EXIT_ROOM' });
                         }}
                         style={{
                             background: 'rgba(239, 68, 68, 0.1)',

@@ -5,6 +5,7 @@ import type { ClientMessage, GameState, GameStatus, VisitAction } from '../types
 import { id, tx } from '@instantdb/react';
 import { GameEngine } from '../lib/GameEngine.ts';
 import { useEffect, useRef, useState } from 'react';
+import { useAlert } from '../components/AlertContext';
 
 /** Generate a short 8-character alphanumeric room code */
 function generateRoomCode(): string {
@@ -17,6 +18,7 @@ function generateRoomCode(): string {
 }
 
 export function useGameState() {
+    const { showAlert } = useAlert();
     const remoteActionInFlightRef = useRef(false);
     const draftActionsRef = useRef<VisitAction[]>([]);
     const [draftActions, setDraftActions] = useState<VisitAction[]>([]);
@@ -213,7 +215,7 @@ export function useGameState() {
 
                     const profileId = resolvedProfile?.id;
                     if (!profileId) {
-                        alert('Profile not found. Please set up your profile first.');
+                        showAlert('Profile not found. Please set up your profile first.', 'error');
                         return;
                     }
 
@@ -246,7 +248,7 @@ export function useGameState() {
 
                     const profileId = resolvedProfile?.id;
                     if (!profileId) {
-                        alert('Profile not found. Please set up your profile first.');
+                        showAlert('Profile not found. Please set up your profile first.', 'error');
                         return;
                     }
 
@@ -256,7 +258,7 @@ export function useGameState() {
                     });
                     const targetRoom = roomLookup.data?.rooms?.[0];
                     if (!targetRoom) {
-                        alert('Room not found. Please check the code and try again.');
+                        showAlert('Room not found. Please check the code and try again.', 'error');
                         return;
                     }
 
@@ -347,7 +349,7 @@ export function useGameState() {
                     break;
             }
         } catch (e: any) {
-            alert("Action failed: " + e.message);
+            showAlert("Action failed: " + e.message, 'error');
         } finally {
             if (shouldLockRemoteAction) {
                 remoteActionInFlightRef.current = false;

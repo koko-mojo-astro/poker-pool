@@ -2,6 +2,7 @@ import React from 'react';
 import type { GameState, ClientMessage, Rank } from '../types';
 import { Card } from './Card';
 import { useToast } from './Toast';
+import { useAlert } from './AlertContext';
 import { useState } from 'react';
 import { LeaderboardModal } from './LeaderboardModal';
 import { WrongBallPotModal } from './WrongBallPotModal';
@@ -14,6 +15,7 @@ interface GameScreenProps {
 
 export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps) {
     const { showToast } = useToast();
+    const { showConfirm } = useAlert();
     const myPlayer = gameState.players.find(p => p.id === playerId);
     const otherPlayers = gameState.players.filter(p => p.id !== playerId);
     const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -65,21 +67,23 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
         showToast('Draw applied.', 'info');
     };
 
-    const handleFoul = () => {
-        if (confirm('Are you sure you want to mark a foul? You will lose your license and draw a card.')) {
+    const handleFoul = async () => {
+        const ok = await showConfirm('Are you sure you want to mark a foul? You will lose your license and draw a card.');
+        if (ok) {
             void Promise.resolve(sendMessage({ type: 'MARK_FOUL' }));
             showToast('Foul applied.', 'error');
         }
     };
 
-    const handleUpdateJoker = (type: 'direct' | 'all', delta: 1 | -1) => {
+    const handleUpdateJoker = async (type: 'direct' | 'all', delta: 1 | -1) => {
         if (isCommittingDraft || !myPlayer) return;
 
         if (delta === -1) {
             const msg = myPlayer.hasLicense
                 ? `Decrementing this joker will remove your license and you will draw a penalty card. Continue?`
                 : `Decrement ${type.toUpperCase()} joker ball? Continue?`;
-            if (!confirm(msg)) return;
+            const ok = await showConfirm(msg);
+            if (!ok) return;
         }
 
         void Promise.resolve(sendMessage({ type: 'UPDATE_JOKER', payload: { type, delta } }));
@@ -144,11 +148,10 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
                             🏆
                         </button>
                         <button
-                            onClick={() => {
+                            onClick={async () => {
                                 const msg = myPlayer.isCreator ? 'Exit & disband room?' : 'Leave the current game?';
-                                if (confirm(msg)) {
-                                    sendMessage({ type: 'EXIT_ROOM' });
-                                }
+                                const ok = await showConfirm(msg);
+                                if (ok) sendMessage({ type: 'EXIT_ROOM' });
                             }}
                             style={{
                                 background: 'rgba(239, 68, 68, 0.1)',

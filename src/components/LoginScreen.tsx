@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { db } from '../lib/db';
+import { useAlert } from './AlertContext';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_NAME = import.meta.env.VITE_INSTANT_CLIENT_NAME || 'google-web';
 
 export const LoginScreen: React.FC = () => {
+    const { showAlert } = useAlert();
     const [nonce] = useState(crypto.randomUUID());
 
     return (
@@ -30,7 +32,7 @@ export const LoginScreen: React.FC = () => {
                     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
                         <GoogleLogin
                             nonce={nonce}
-                            onError={() => alert('Login failed')}
+                            onError={() => showAlert('Login failed', 'error')}
                             onSuccess={({ credential }) => {
                                 if (!credential) return;
                                 db.auth.signInWithIdToken({
@@ -38,7 +40,7 @@ export const LoginScreen: React.FC = () => {
                                     idToken: credential,
                                     nonce,
                                 }).catch((err) => {
-                                    alert('Authentication error: ' + (err.body?.message || err.message));
+                                    showAlert('Authentication error: ' + (err.body?.message || err.message), 'error');
                                 });
                             }}
                         />
@@ -52,7 +54,7 @@ export const LoginScreen: React.FC = () => {
                             {[1, 2, 3, 4].map(num => (
                                 <button
                                     key={num}
-                                    onClick={() => db.auth.sendMagicCode({ email: `tunmin.koko305+test${num}@gmail.com` }).then(() => alert(`Sent code to test${num}!`)).catch(e => alert(e.message))}
+                                    onClick={() => db.auth.sendMagicCode({ email: `tunmin.koko305+test${num}@gmail.com` }).then(() => showAlert(`Sent code to test${num}!`, 'info')).catch(e => showAlert(e.message, 'error'))}
                                     className="btn-primary"
                                     style={{ fontSize: '0.75rem', padding: '8px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid var(--primary)' }}
                                 >
@@ -77,7 +79,7 @@ export const LoginScreen: React.FC = () => {
                                 onClick={() => {
                                     const email = (document.getElementById('dev-email-input') as HTMLInputElement).value;
                                     const code = (document.getElementById('dev-code-input') as HTMLInputElement).value;
-                                    if (email && code) db.auth.signInWithMagicCode({ email, code }).catch(e => alert(e.message));
+                                    if (email && code) db.auth.signInWithMagicCode({ email, code }).catch(e => showAlert(e.message, 'error'));
                                 }}
                                 className="btn-primary"
                                 style={{ padding: '8px 16px', fontSize: '0.8rem' }}

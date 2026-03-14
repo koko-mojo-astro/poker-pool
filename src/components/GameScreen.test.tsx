@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { GameScreen } from './GameScreen';
 import { ToastProvider } from './Toast';
+import { AlertProvider } from './AlertContext';
 import type { Card, GameState, Rank, VisitAction } from '../types';
 
 function makeCard(rank: Rank, id: string): Card {
@@ -48,9 +49,11 @@ function createGameState(myHand: Card[], pottedCards: Rank[] = [], stagedVisitAc
 
 function renderGameScreen(state: GameState, sendMessage = vi.fn()) {
     render(
-        <ToastProvider>
-            <GameScreen gameState={state} playerId="p1" sendMessage={sendMessage} />
-        </ToastProvider>
+        <AlertProvider>
+            <ToastProvider>
+                <GameScreen gameState={state} playerId="p1" sendMessage={sendMessage} />
+            </ToastProvider>
+        </AlertProvider>
     );
     return { sendMessage };
 }

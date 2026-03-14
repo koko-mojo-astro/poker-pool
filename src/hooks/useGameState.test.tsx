@@ -1,4 +1,5 @@
 /* @vitest-environment happy-dom */
+import React from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -52,6 +53,9 @@ vi.mock('@instantdb/react', () => ({
 }));
 
 import { useGameState } from './useGameState';
+import { AlertProvider } from '../components/AlertContext';
+
+const wrapper = ({ children }: { children: React.ReactNode }) => <AlertProvider>{children}</AlertProvider>;
 
 function createRoom() {
   return {
@@ -131,7 +135,7 @@ describe('useGameState gameplay actions', () => {
       isLoading: false,
     });
 
-    const { result } = renderHook(() => useGameState());
+    const { result } = renderHook(() => useGameState(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage({ type: 'POT_CARD', payload: { cardId: 'a1' } });
@@ -166,7 +170,7 @@ describe('useGameState gameplay actions', () => {
       },
     });
 
-    const { result } = renderHook(() => useGameState());
+    const { result } = renderHook(() => useGameState(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage({ type: 'POT_CARD', payload: { cardId: 'a1' } });
@@ -201,7 +205,7 @@ describe('useGameState gameplay actions', () => {
       data: { rooms: [room] },
     });
 
-    const { result } = renderHook(() => useGameState());
+    const { result } = renderHook(() => useGameState(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage({ type: 'POT_CARD', payload: { rank: 'Q' } });
@@ -227,7 +231,7 @@ describe('useGameState gameplay actions', () => {
       data: { rooms: [room] },
     });
 
-    const { result } = renderHook(() => useGameState());
+    const { result } = renderHook(() => useGameState(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage({ type: 'DRAW_CARD' });
@@ -253,7 +257,7 @@ describe('useGameState gameplay actions', () => {
       data: { rooms: [room] },
     });
 
-    const { result } = renderHook(() => useGameState());
+    const { result } = renderHook(() => useGameState(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage({ type: 'MARK_FOUL' });
@@ -279,7 +283,7 @@ describe('useGameState gameplay actions', () => {
       data: { rooms: [room] },
     });
 
-    const { result } = renderHook(() => useGameState());
+    const { result } = renderHook(() => useGameState(), { wrapper });
 
     await act(async () => {
       await result.current.sendMessage({ type: 'UPDATE_JOKER', payload: { type: 'direct', delta: 1 } });

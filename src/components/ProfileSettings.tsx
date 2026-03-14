@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/db';
 import { id, tx } from '@instantdb/react';
+import { useAlert } from './AlertContext';
 
 interface Props {
     isInitialSetup?: boolean;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export const ProfileSettings: React.FC<Props> = ({ isInitialSetup, onComplete }) => {
+    const { showAlert } = useAlert();
     const { user } = db.useAuth();
 
     // We need the profile, and we also need matches where this profile is a player.
@@ -60,7 +62,7 @@ export const ProfileSettings: React.FC<Props> = ({ isInitialSetup, onComplete })
 
             if (onComplete && isInitialSetup) onComplete();
         } catch (e: any) {
-            alert('Error saving profile: ' + e.message);
+            showAlert('Error saving profile: ' + e.message, 'error');
         } finally {
             setIsSaving(false);
         }

@@ -84,12 +84,18 @@ Use this skill when working anywhere in this repository.
 3. Confirm the schema matches the queried fields and linked relations.
 4. Check whether a bug is caused by array/object relation shape differences.
 
+## Process
+
+- After implementing a feature or architecture change, update the project rules ([.cursor/rules/poker-pool-project.mdc](.cursor/rules/poker-pool-project.mdc)) and this skill so documentation stays in sync with the codebase.
+- User-facing dialogs use the custom Alert/Confirm from `AlertContext` (`useAlert()`, `showAlert()`, `showConfirm()`); do not use the browser `alert()` or `confirm()`.
+
 ## Validation
 
 - Run `npx tsc --noEmit` after substantive edits.
 - Run `npm run lint` after substantive edits.
 - Run `npm run test` after substantive edits, and ensure changed behavior has matching unit coverage.
 - For gameplay changes, verify create/join/start/play/finish/restart/exit flows still behave correctly across multiple clients.
+- When testing components or hooks that use `useAlert()`, wrap the tree with `AlertProvider` (e.g. in tests use a wrapper that includes `AlertProvider`).
 
 ## Additional Resource
 
