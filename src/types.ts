@@ -38,6 +38,12 @@ export interface RoomConfig {
     jokerAmount: number;
 }
 
+export type VisitAction =
+    | { type: 'POT_CARD'; payload: { cardId: string } | { rank: Rank } }
+    | { type: 'DRAW_CARD' }
+    | { type: 'MARK_FOUL' }
+    | { type: 'UPDATE_JOKER'; payload: { type: 'direct' | 'all'; delta: 1 | -1 } };
+
 export interface GameState {
     roomId: string;
     config: RoomConfig;
@@ -46,6 +52,7 @@ export interface GameState {
     pottedCards: Rank[]; // Values like '7', 'K' that are potted
     deckCount: number;
     winnerId: string | null;
+    stagedVisitActions: VisitAction[];
     payouts?: PayoutInfo[];
     settlements?: PairwiseSettlement[];
     totalSettlements?: Record<string, number>;
@@ -95,6 +102,9 @@ export type ClientMessage =
     | { type: 'DRAW_CARD' }
     | { type: 'MARK_FOUL' }
     | { type: 'UPDATE_JOKER'; payload: { type: 'direct' | 'all'; delta: 1 | -1 } }
+    | { type: 'UNDO_VISIT_ACTION' }
+    | { type: 'CLEAR_VISIT_DRAFT' }
+    | { type: 'COMMIT_VISIT' }
     | { type: 'RESTART_GAME' }
     | { type: 'RECONNECT'; payload: { roomId: string; playerId: string } }
     | { type: 'EXIT_ROOM' };

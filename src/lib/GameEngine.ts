@@ -1,9 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { tx, id } from '@instantdb/react';
+import { id, tx } from '@instantdb/react';
 import { Deck } from './Deck';
-import type { PairwiseSettlement, RoomConfig } from '../types';
+import type { PairwiseSettlement, RoomConfig, VisitAction } from '../types';
 
 export class GameEngine {
+    private static cloneRoomData(roomData: any) {
+        return JSON.parse(JSON.stringify({
+            ...roomData,
+            players: roomData?.players || [],
+            pottedCards: roomData?.pottedCards || [],
+            deck: roomData?.deck || [],
+            turnOrder: roomData?.turnOrder || [],
+        }));
+    }
+
     private static drawEligibleCard(deckInput: any[], pottedCards: any[]) {
         const deck = [...(deckInput || [])];
         let cardToDraw = null;
@@ -33,12 +43,18 @@ export class GameEngine {
         }
         if (!Array.isArray(order) || order.length === 0) return [...players];
 
-        const orderIndex = new Map(order.map((id: any, index: number) => [String(id), index]));
+        const orderIndex = new Map(order.map((playerId: any, index: number) => [String(playerId), index]));
         return [...players].sort((a: any, b: any) => {
             const aIdx = orderIndex.get(String(a.id));
             const bIdx = orderIndex.get(String(b.id));
             return (aIdx ?? Number.MAX_SAFE_INTEGER) - (bIdx ?? Number.MAX_SAFE_INTEGER);
         });
+    }
+
+    private static getPlayerOrThrow(roomData: any, playerId: string) {
+        const player = roomData.players.find((candidate: any) => candidate.id === playerId);
+        if (!player) throw new Error('Player not found.');
+        return player;
     }
 
     private static mapNetChangesToProfiles(players: any[], netChanges: Record<string, number>) {
@@ -51,13 +67,228 @@ export class GameEngine {
         }, {});
     }
 
+    private static resolveWinningPlayerId(roomData: any, actingPlayerId: string): string | null {
+        const zeroCardPlayers = (roomData.players || []).filter((player: any) => (player.hand || []).length === 0);
+        if (zeroCardPlayers.length === 0) return null;
+
+        if (zeroCardPlayers.some((player: any) => player.id === actingPlayerId)) {
+            return actingPlayerId;
+        }
+
+        const orderedPlayers = this.getPlayersInTurnOrder(roomData.players || [], roomData.turnOrder);
+        return orderedPlayers.find((player: any) => zeroCardPlayers.some((zeroPlayer: any) => zeroPlayer.id === player.id))?.id
+            || zeroCardPlayers[0]?.id
+            || null;
+    }
+
+    private static applyPotAction(roomData: any, playerId: string, payload: { cardId?: string; rank?: string }) {
+        const player = this.getPlayerOrThrow(roomData, playerId);
+        const actorHand = [...(player.hand || [])];
+        const cardId = payload?.cardId;
+        const explicitRank = payload?.rank;
+        let pottedRank: string | null = null;
+        let actorBaseHand = actorHand;
+        let actorHasPottedRank = false;
+
+        if (cardId) {
+            const cardIndex = actorHand.findIndex((card: any) => card.id === cardId);
+            if (cardIndex === -1) throw new Error('That card is no longer in your hand.');
+            pottedRank = actorHand[cardIndex].rank;
+            actorHasPottedRank = true;
+            actorBaseHand = [...actorHand];
+            actorBaseHand.splice(cardIndex, 1);
+        } else if (explicitRank) {
+            pottedRank = explicitRank;
+            actorHasPottedRank = actorHand.some((card: any) => card.rank === pottedRank);
+        } else {
+            throw new Error('Missing pot payload.');
+        }
+
+        if (!pottedRank) throw new Error('Unable to resolve potted rank.');
+        if ((roomData.pottedCards || []).includes(pottedRank)) {
+            throw new Error(`${pottedRank} has already been potted.`);
+        }
+
+        roomData.pottedCards = [...(roomData.pottedCards || []), pottedRank];
+
+        if (actorHasPottedRank) {
+            player.hasLicense = true;
+        } else {
+            player.hasLicense = false;
+        }
+
+        roomData.players.forEach((candidate: any) => {
+            const currentHand = candidate.id === playerId ? actorBaseHand : (candidate.hand || []);
+            const filteredHand = currentHand.filter((card: any) => card.rank !== pottedRank);
+            candidate.hand = filteredHand;
+            candidate.cardCount = filteredHand.length;
+        });
+
+        if (!actorHasPottedRank) {
+            const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], roomData.pottedCards || []);
+            roomData.deck = deck;
+
+            if (cardToDraw) {
+                player.hand = [...(player.hand || []), cardToDraw];
+                player.cardCount = player.hand.length;
+            }
+        }
+    }
+
+    private static applyDrawAction(roomData: any, playerId: string) {
+        const player = this.getPlayerOrThrow(roomData, playerId);
+        if (player.hasLicense) throw new Error('Licensed players cannot draw.');
+
+        const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], roomData.pottedCards || []);
+        if (!cardToDraw) throw new Error('No eligible cards left to draw.');
+
+        roomData.deck = deck;
+        player.hand = [...(player.hand || []), cardToDraw];
+        player.cardCount = player.hand.length;
+    }
+
+    private static applyMarkFoulAction(roomData: any, playerId: string) {
+        const player = this.getPlayerOrThrow(roomData, playerId);
+        if (!player.hasLicense) throw new Error('You need a license before marking a foul.');
+
+        player.hasLicense = false;
+
+        const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], roomData.pottedCards || []);
+        roomData.deck = deck;
+
+        if (cardToDraw) {
+            player.hand = [...(player.hand || []), cardToDraw];
+            player.cardCount = player.hand.length;
+        }
+    }
+
+    private static applyJokerAction(
+        roomData: any,
+        playerId: string,
+        payload: { type: 'direct' | 'all'; delta: 1 | -1 },
+    ) {
+        const player = this.getPlayerOrThrow(roomData, playerId);
+        if (payload.delta > 0 && !player.hasLicense) {
+            throw new Error('You need a license to add joker balls.');
+        }
+
+        const currentValue = player.jokerBalls?.[payload.type] || 0;
+        player.jokerBalls = {
+            ...player.jokerBalls,
+            [payload.type]: currentValue + payload.delta,
+        };
+    }
+
+    static applyVisitActions(roomData: any, playerId: string, actions: VisitAction[]) {
+        if (!roomData || roomData.status !== 'PLAYING') {
+            throw new Error('Game is not in progress.');
+        }
+
+        const nextRoom = this.cloneRoomData(roomData);
+        this.getPlayerOrThrow(nextRoom, playerId);
+
+        actions.forEach((action) => {
+            switch (action.type) {
+                case 'POT_CARD':
+                    this.applyPotAction(nextRoom, playerId, action.payload);
+                    break;
+                case 'DRAW_CARD':
+                    this.applyDrawAction(nextRoom, playerId);
+                    break;
+                case 'MARK_FOUL':
+                    this.applyMarkFoulAction(nextRoom, playerId);
+                    break;
+                case 'UPDATE_JOKER':
+                    this.applyJokerAction(nextRoom, playerId, action.payload);
+                    break;
+            }
+        });
+
+        return nextRoom;
+    }
+
+    private static buildVisitCommitTxs(roomData: any, winningPlayerId: string | null) {
+        const txs: any[] = [];
+        const roomUpdate: Record<string, unknown> = {
+            pottedCards: roomData.pottedCards || [],
+            deck: roomData.deck || [],
+        };
+
+        roomData.players.forEach((player: any) => {
+            txs.push(tx.roomPlayers[player.id].update({
+                hand: player.hand || [],
+                cardCount: (player.hand || []).length,
+                hasLicense: !!player.hasLicense,
+                jokerBalls: player.jokerBalls || { direct: 0, all: 0 },
+            }));
+        });
+
+        if (winningPlayerId) {
+            const orderedPlayers = this.getPlayersInTurnOrder(roomData.players, roomData.turnOrder);
+            const settlements = this.computeSettlements(orderedPlayers, winningPlayerId, roomData.config);
+            const netChanges: Record<string, number> = {};
+            roomData.players.forEach((player: any) => {
+                netChanges[player.id] = 0;
+            });
+
+            settlements.forEach((settlement) => {
+                netChanges[settlement.fromPlayerId] -= settlement.amount;
+                netChanges[settlement.toPlayerId] += settlement.amount;
+            });
+
+            const netChangesByProfile = this.mapNetChangesToProfiles(roomData.players, netChanges);
+            const currentTotalSettlements = roomData.totalSettlements || {};
+            const newTotalSettlements = { ...currentTotalSettlements };
+
+            Object.entries(netChangesByProfile).forEach(([profileId, amount]) => {
+                newTotalSettlements[profileId] = (newTotalSettlements[profileId] || 0) + amount;
+            });
+
+            roomUpdate.status = 'FINISHED';
+            roomUpdate.winnerId = winningPlayerId;
+            roomUpdate.totalSettlements = newTotalSettlements;
+
+            const winnerProfile = roomData.players.find((player: any) => player.id === winningPlayerId)?.profile;
+            const winnerName = winnerProfile?.[0]?.displayName || winnerProfile?.displayName || 'Winner';
+            const playerSnapshots = roomData.players.map((player: any) => ({
+                id: player.id,
+                profileId: this.getPlayerProfileId(player),
+                name: player.profile?.[0]?.displayName || player.profile?.displayName || 'Player',
+                directJ: player.jokerBalls?.direct || 0,
+                allJ: player.jokerBalls?.all || 0,
+                cardCount: (player.hand || []).length,
+                hasLicense: !!player.hasLicense,
+            }));
+
+            const matchId = id();
+            txs.push(
+                tx.matches[matchId].update({
+                    winnerId: winningPlayerId,
+                    winnerName,
+                    timestamp: Date.now(),
+                    roomCode: roomData.roomCode,
+                    netChanges,
+                    playerSnapshots,
+                    settlements,
+                }).link({ room: roomData.id }),
+            );
+
+            roomData.players.forEach((player: any) => {
+                const profileId = Array.isArray(player.profile) ? player.profile?.[0]?.id : player.profile?.id;
+                if (profileId) txs.push(tx.matches[matchId].link({ players: profileId }));
+            });
+        }
+
+        txs.unshift(tx.rooms[roomData.id].update(roomUpdate));
+        return txs;
+    }
+
     static async startGame(db: any, roomData: any, initiatorId: string) {
         if (!roomData || roomData.status !== 'WAITING') return;
-        const initiator = roomData.players.find((p: any) => p.id === initiatorId);
+        const initiator = roomData.players.find((player: any) => player.id === initiatorId);
         if (!initiator || !initiator.isCreator) return;
         if (roomData.players.length < 2) return;
 
-        // Shuffle players
         const players = [...roomData.players];
         for (let i = players.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -67,7 +298,6 @@ export class GameEngine {
         const deck = new Deck();
         const txs: any[] = [];
 
-        // Distribute cards
         players.forEach((player) => {
             const hand = [];
             for (let i = 0; i < 7; i++) {
@@ -87,227 +317,23 @@ export class GameEngine {
         txs.push(tx.rooms[roomData.id].update({
             status: 'PLAYING',
             deck: remainingDeck,
-            turnOrder: players.map(p => p.id)
+            turnOrder: players.map((player) => player.id),
+            winnerId: null,
         }));
 
         await db.transact(txs);
     }
 
-    static async drawCard(db: any, roomData: any, playerId: string) {
-        const player = roomData.players.find((p: any) => p.id === playerId);
-        if (!player) return;
-
-        const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], roomData.pottedCards || []);
-        if (!cardToDraw) return; // Error, no eligible cards
-
-        const newHand = [...(player.hand || []), cardToDraw];
-
-        await db.transact([
-            tx.rooms[roomData.id].update({ deck }),
-            tx.roomPlayers[playerId].update({ hand: newHand, cardCount: newHand.length })
-        ]);
-    }
-
-    static async potCard(
-        db: any,
-        roomData: any,
-        playerId: string,
-        payload: { cardId?: string; rank?: string }
-    ) {
-        const player = roomData.players.find((p: any) => p.id === playerId);
-        if (!player || !player.hand) return;
-
-        const actorHand = [...(player.hand || [])];
-        const cardId = payload?.cardId;
-        const explicitRank = payload?.rank;
-        let pottedRank: string | null = null;
-        let actorBaseHand = actorHand;
-        let actorHasPottedRank = false;
-
-        if (cardId) {
-            const cardIndex = actorHand.findIndex((c: any) => c.id === cardId);
-            if (cardIndex === -1) return;
-            pottedRank = actorHand[cardIndex].rank;
-            actorHasPottedRank = true;
-            actorBaseHand = [...actorHand];
-            actorBaseHand.splice(cardIndex, 1);
-        } else if (explicitRank) {
-            pottedRank = explicitRank;
-            actorHasPottedRank = actorHand.some((c: any) => c.rank === pottedRank);
-        } else {
-            return;
-        }
-
-        if (!pottedRank) return;
-
-        const txs: any[] = [];
-        let resultingActorHasLicense = !!player.hasLicense;
-
-        // Correct pot grants license; wrong-ball pot is treated as foul.
-        if (actorHasPottedRank) {
-            if (!player.hasLicense) {
-                txs.push(tx.roomPlayers[playerId].update({ hasLicense: true }));
-                resultingActorHasLicense = true;
-            }
-        } else {
-            if (player.hasLicense) {
-                txs.push(tx.roomPlayers[playerId].update({ hasLicense: false }));
-            }
-            resultingActorHasLicense = false;
-        }
-
-        // Add to potted cards
-        const newPottedCards = [...(roomData.pottedCards || [])];
-        if (!newPottedCards.includes(pottedRank)) {
-            newPottedCards.push(pottedRank);
-            txs.push(tx.rooms[roomData.id].update({ pottedCards: newPottedCards }));
-        }
-
-        // Update hands of ALL players
-        let someoneWon = false;
-        let winningPlayerId: string | null = null;
-        const finalHandsByPlayer = new Map<string, any[]>();
-
-        roomData.players.forEach((p: any) => {
-            const currentHand = p.id === playerId ? actorBaseHand : (p.hand || []);
-            const filteredHand = currentHand.filter((c: any) => c.rank !== pottedRank);
-            finalHandsByPlayer.set(p.id, filteredHand);
-
-            txs.push(tx.roomPlayers[p.id].update({ hand: filteredHand, cardCount: filteredHand.length }));
-
-            if (filteredHand.length === 0) {
-                someoneWon = true;
-                // If the potting player reduced their hand to 0, they win, otherwise whoever drops to 0 wins
-                if (p.id === playerId) {
-                    winningPlayerId = playerId;
-                } else if (!winningPlayerId) {
-                    winningPlayerId = p.id;
-                }
-            }
-        });
-
-        // Wrong-ball penalty: draw one eligible card after global rank removal.
-        if (!actorHasPottedRank) {
-            const actorFilteredHand = finalHandsByPlayer.get(playerId) || [];
-            const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], newPottedCards);
-
-            if (cardToDraw) {
-                const penalizedHand = [...actorFilteredHand, cardToDraw];
-                finalHandsByPlayer.set(playerId, penalizedHand);
-                txs.push(tx.rooms[roomData.id].update({ deck }));
-                txs.push(tx.roomPlayers[playerId].update({ hand: penalizedHand, cardCount: penalizedHand.length }));
-            }
-        }
-
-        if (someoneWon && winningPlayerId) {
-            // Compute settlements for history mapping
-            const orderedPlayers = this.getPlayersInTurnOrder(roomData.players, roomData.turnOrder);
-            const settlements = this.computeSettlements(orderedPlayers, winningPlayerId, roomData.config);
-            const netChanges: Record<string, number> = {};
-            roomData.players.forEach((p: any) => netChanges[p.id] = 0);
-
-            settlements.forEach((s) => {
-                netChanges[s.fromPlayerId] -= s.amount;
-                netChanges[s.toPlayerId] += s.amount;
-            });
-
-            const netChangesByProfile = this.mapNetChangesToProfiles(roomData.players, netChanges);
-
-            // Calculate new total settlements for the room
-            const currentTotalSettlements = roomData.totalSettlements || {};
-            const newTotalSettlements = { ...currentTotalSettlements };
-
-            Object.entries(netChangesByProfile).forEach(([profileId, amount]) => {
-                newTotalSettlements[profileId] = (newTotalSettlements[profileId] || 0) + amount;
-            });
-
-            txs.push(tx.rooms[roomData.id].update({
-                status: 'FINISHED',
-                winnerId: winningPlayerId,
-                totalSettlements: newTotalSettlements
-            }));
-
-            // Need winner name
-            const winnerProfile = roomData.players.find((p: any) => p.id === winningPlayerId)?.profile;
-            const winnerName = winnerProfile?.[0]?.displayName || winnerProfile?.displayName || 'Winner';
-
-            const playerSnapshots = roomData.players.map((p: any) => ({
-                id: p.id,
-                profileId: this.getPlayerProfileId(p),
-                name: p.profile?.[0]?.displayName || p.profile?.displayName || 'Player',
-                directJ: p.jokerBalls?.direct || 0,
-                allJ: p.jokerBalls?.all || 0,
-                cardCount: (finalHandsByPlayer.get(p.id) || []).length,
-                hasLicense: p.id === playerId ? resultingActorHasLicense : p.hasLicense
-            }));
-
-            // Record the match securely
-            const matchId = id();
-            txs.push(
-                tx.matches[matchId].update({
-                    winnerId: winningPlayerId,
-                    winnerName,
-                    timestamp: Date.now(),
-                    roomCode: roomData.roomCode,
-                    netChanges,
-                    playerSnapshots,
-                    settlements
-                }).link({ room: roomData.id }),
-            );
-
-            // Link profiles to match so history querying is easy
-            // Normalize profile shape: InstantDB may return it as an array OR a plain object
-            roomData.players.forEach((p: any) => {
-                const profileId = Array.isArray(p.profile) ? p.profile?.[0]?.id : p.profile?.id;
-                if (profileId) txs.push(tx.matches[matchId].link({ players: profileId }));
-            });
-        }
-
-        await db.transact(txs);
-    }
-
-    static async markFoul(db: any, roomData: any, playerId: string) {
-        const player = roomData.players.find((p: any) => p.id === playerId);
-        if (!player || !player.hasLicense) return;
-
-        // Lose license
-        const txs: any[] = [
-            tx.roomPlayers[playerId].update({ hasLicense: false })
-        ];
-
-        // Try to draw penalty card
-        const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], roomData.pottedCards || []);
-        if (cardToDraw) {
-            const newHand = [...(player.hand || []), cardToDraw];
-            txs.push(tx.rooms[roomData.id].update({ deck }));
-            txs.push(tx.roomPlayers[playerId].update({ hand: newHand, cardCount: newHand.length }));
-        }
-
-        await db.transact(txs);
-    }
-
-    static async updateJokerCount(db: any, roomData: any, playerId: string, type: 'direct' | 'all', delta: 1 | -1) {
-        const player = roomData.players.find((p: any) => p.id === playerId);
-        if (!player) return;
-
-        if (delta > 0 && !player.hasLicense) return;
-
-        const currentVal = player.jokerBalls?.[type] || 0;
-        const newVal = currentVal + delta;
-
-        await db.transact([
-            tx.roomPlayers[playerId].update({
-                jokerBalls: {
-                    ...player.jokerBalls,
-                    [type]: newVal
-                }
-            })
-        ]);
+    static async commitVisit(db: any, roomData: any, playerId: string, actions: VisitAction[]) {
+        if (!actions.length) return;
+        const committedRoom = this.applyVisitActions(roomData, playerId, actions);
+        const winningPlayerId = this.resolveWinningPlayerId(committedRoom, playerId);
+        await db.transact(this.buildVisitCommitTxs(committedRoom, winningPlayerId));
     }
 
     static async restartGame(db: any, roomData: any, initiatorId: string) {
         if (!roomData || roomData.status !== 'FINISHED') return;
-        const initiator = roomData.players.find((p: any) => p.id === initiatorId);
+        const initiator = roomData.players.find((player: any) => player.id === initiatorId);
         if (!initiator || !initiator.isCreator) return;
 
         const txs = [
@@ -317,15 +343,15 @@ export class GameEngine {
                 pottedCards: [],
                 winnerId: null,
                 turnOrder: [],
-            })
+            }),
         ];
 
-        roomData.players.forEach((p: any) => {
-            txs.push(tx.roomPlayers[p.id].update({
+        roomData.players.forEach((player: any) => {
+            txs.push(tx.roomPlayers[player.id].update({
                 hand: [],
                 hasLicense: false,
                 jokerBalls: { direct: 0, all: 0 },
-                cardCount: 0
+                cardCount: 0,
             }));
         });
 
@@ -334,23 +360,19 @@ export class GameEngine {
 
     static async exitRoom(db: any, roomData: any, playerId: string) {
         if (!roomData) return;
-        const player = roomData.players?.find((p: any) => p.id === playerId);
+        const player = roomData.players?.find((candidate: any) => candidate.id === playerId);
 
         if (player?.isCreator) {
-            // Creator disbands the room: explicitly delete all roomPlayers + the room
-            // in a single atomic transaction — no reliance on cascade behavior.
-            const txs: any[] = (roomData.players || []).map((p: any) => tx.roomPlayers[p.id].delete());
+            const txs: any[] = (roomData.players || []).map((candidate: any) => tx.roomPlayers[candidate.id].delete());
             txs.push(tx.rooms[roomData.id].delete());
             await db.transact(txs);
         } else {
-            // Guest leaves: only remove their own roomPlayer record
             await db.transact([
-                tx.roomPlayers[playerId].delete()
+                tx.roomPlayers[playerId].delete(),
             ]);
         }
     }
 
-    // Identical logic from RoomManager.ts to compute payouts accurately
     private static computeSettlements(players: any[], winnerId: string, config: RoomConfig): PairwiseSettlement[] {
         const { gameAmount, jokerAmount } = config;
         const numPlayers = players.length;

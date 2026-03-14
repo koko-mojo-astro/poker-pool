@@ -85,6 +85,7 @@ The `GameEngine` class in `src/lib/GameEngine.ts` is the canonical home for all 
 - All methods are `static async` and accept `(db, roomData, playerId, ...)`.
 - `roomData` is always the raw InstantDB shape from `useGameState` (with nested `players` array).
 - **Win conditions**: a player's hand reaches 0 cards after potting. The pot operation also filters all players' hands by rank.
+- **Batched visit flow**: No turn-based fields. Actions (pot, draw, foul, joker) are staged in `GameState.stagedVisitActions`; the UI previews; `COMMIT_VISIT` triggers `GameEngine.commitVisit`, which applies the staged actions on a fresh room snapshot, resolves the winner, and persists in one transaction.
 - **License**: required to pot a card and claim Joker Balls. Fouls revoke the license.
 - **Joker Balls**: two types — `direct` (pays the player above you in turn order) and `all` (winner collects from all).
 - Settlement math uses pairwise netting — `computeSettlements` is `private static` in `GameEngine`.
@@ -93,7 +94,7 @@ The `GameEngine` class in `src/lib/GameEngine.ts` is the canonical home for all 
 1. Creator creates room → `rooms` + `roomPlayers` record created, linked.
 2. Guests join → new `roomPlayers` record linked to `rooms` and `profiles`.
 3. Creator starts game → `GameEngine.startGame` shuffles players, distributes 7 cards each.
-4. Game ends → `GameEngine.potCard` detects win, writes `matches` record, updates `totalSettlements`.
+4. Game ends → on `COMMIT_VISIT`, `GameEngine.commitVisit` applies staged actions, detects win, writes `matches` record, updates `totalSettlements`.
 5. Creator restarts → `GameEngine.restartGame` resets room to `WAITING`, clears hands/jokers.
 6. Creator exits → room is deleted (cascade cleans up `roomPlayers`). Guest exits → only their `roomPlayers` record deleted. **Matches are preserved.**
 
@@ -119,8 +120,14 @@ The `GameEngine` class in `src/lib/GameEngine.ts` is the canonical home for all 
 |---|---|
 | `.glass-panel` | Cards, panels — backdrop blur, border, shadow |
 | `.btn-primary` | CTA buttons — purple→pink gradient |
-| `.container` | Page wrapper — max-width 600px, centered, safe-area padding |
+| `.container` | Page wrapper — block-level, max-width 600px, centered, safe-area padding (no flex: 1) |
+| `.app-scroll` | Main content wrapper — flex: 1, min-height: 0, overflow-y: auto; only this area scrolls |
+| `.app-footer` | Footer — flex-shrink: 0, full-width, pinned to bottom of viewport |
 | `.animate-fade-in` | Entry animation — `fadeIn` keyframe |
+
+### Layout and scroll
+- **`#root`**: `display: flex; flex-direction: column; min-height: 100dvh`. Do not set `height: 100%` on `html` or `body` (it breaks scrolling).
+- Main content lives inside `.app-scroll`; footer (`.app-footer`) is a sibling and stays at the bottom of the viewport.
 
 ### Design Principles
 - **Dark mode only.** All backgrounds use `--bg-dark` or `--bg-panel`.

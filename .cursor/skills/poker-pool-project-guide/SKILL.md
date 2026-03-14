@@ -28,6 +28,7 @@ Use this skill when working anywhere in this repository.
 - Use InstantDB reactively: `db.useAuth()`, `db.useQuery()`, `db.queryOnce()`, `tx`, `id()`, and batched `db.transact([...txs])`.
 - Normalize linked InstantDB data because relations may arrive as either arrays or objects.
 - Preserve the existing UI language: dark glassmorphism, CSS variables and utility classes from `src/index.css`, and inline styles for component-local layout.
+- Preserve app layout: `#root` is flex column with `min-height: 100dvh`; main content is wrapped in `.app-scroll` (scrollable area); footer uses `.app-footer` and stays at the bottom of the viewport. Do not set `height: 100%` on `html` or `body`. `.container` is block-level (no flex: 1). GameScreen top bar shows Live Match, Room, Settlement Order, and leaderboard/exit only; the staged-visit bar appears inline in the "You" panel only when there are staged actions.
 
 ## Business Logic Checklist
 
@@ -40,6 +41,7 @@ Use this skill when working anywhere in this repository.
 ## Game Logic Checklist
 
 - `startGame()` only runs for the creator while the room is in `WAITING` and has at least two players.
+- Gameplay uses a **batched visit flow**: actions (pot, draw, foul, joker) are staged locally in `stagedVisitActions`; the UI shows a preview; the user commits with `COMMIT_VISIT`. `GameEngine.applyVisitActions()` replays actions on a room snapshot; `GameEngine.commitVisit()` runs against a fresh room, resolves the winner, and persists in one transaction. There are no turn-based fields.
 - `pottedCards` stores ranks only.
 - Potting a rank removes every card of that rank from every player's hand.
 - A successful first pot grants a license.
@@ -62,10 +64,10 @@ Use this skill when working anywhere in this repository.
 
 ### Adding or changing a game action
 
-1. Update the `ClientMessage` union in `src/types.ts` if a new action is needed.
-2. Add or modify the `GameEngine` method first.
-3. Wire the action through `sendMessage` in `src/hooks/useGameState.ts`.
-4. Update the relevant screen component to call `sendMessage`.
+1. Update the `ClientMessage` union and, if needed, the `VisitAction` type in `src/types.ts` (e.g. for new staged actions or `UNDO_VISIT_ACTION`, `CLEAR_VISIT_DRAFT`, `COMMIT_VISIT`).
+2. For visit-scoped actions: add or update pure apply logic in `GameEngine` (e.g. `applyPotAction`, `applyVisitActions`) and the single commit path `commitVisit`; do not add per-action commit methods.
+3. Wire the action through `sendMessage` in `src/hooks/useGameState.ts` (staging vs commit: stage updates local `stagedVisitActions`, commit calls `GameEngine.commitVisit` with a fresh room snapshot).
+4. Update the relevant screen component to call `sendMessage` and, if needed, show the staged-visit bar (only when `stagedVisitActions.length > 0`).
 5. Verify the resulting InstantDB shape still matches `src/instant.schema.ts`.
 
 ### Changing the data model
