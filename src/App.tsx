@@ -99,28 +99,19 @@ function App() {
 
   return (
     <>
-      <db.SignedIn>
-        <ProfileGuard>
-          <MainApp />
-        </ProfileGuard>
-      </db.SignedIn>
-      <db.SignedOut>
-        <LoginScreen />
-      </db.SignedOut>
+      <div className="app-scroll">
+        <db.SignedIn>
+          <ProfileGuard>
+            <MainApp />
+          </ProfileGuard>
+        </db.SignedIn>
+        <db.SignedOut>
+          <LoginScreen />
+        </db.SignedOut>
+      </div>
 
-      {/* Global Footer */}
-      <footer style={{
-        textAlign: 'center',
-        padding: 'var(--gap-md) 0 calc(var(--gap-md) + var(--safe-area-bottom))',
-        color: 'var(--text-muted)',
-        fontSize: '0.7rem',
-        width: '100%',
-        marginTop: 'auto',
-        opacity: 0.6,
-        letterSpacing: '0.02em',
-        zIndex: 10
-      }}>
-        <p style={{ margin: 0 }}>
+      <footer className="app-footer">
+        <p>
           Made with <span style={{ color: '#a78bfa' }}>💜</span> by <strong>koko-mojo-astro</strong> &bull; v{import.meta.env.VITE_APP_VERSION ?? '0.0.0'}
         </p>
       </footer>

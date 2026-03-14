@@ -47,6 +47,7 @@ The app tracks live room state, player hands, potted ranks, joker counters, winn
 - `turnOrder`: ordered player ids used for turn-relative payout rules.
 - `winnerId`: winner of the current completed game.
 - `totalSettlements`: cumulative session balance across all finished matches in the room.
+- There are no turn-based fields (e.g. no `activePlayerId`, `visitId`) in the schema; the batched visit flow is client-staged then committed once.
 
 ### Important room-player fields
 
@@ -68,22 +69,21 @@ The app tracks live room state, player hands, potted ranks, joker counters, winn
 
 - `GameEngine` is the single source of truth for game-state mutations.
 - Engine methods are `static async` and should batch related writes into one `db.transact([...txs])`.
+- **Batched visit flow**: There are no turn-based fields. During play, actions (pot, draw, foul, joker) are staged locally in `GameState.stagedVisitActions`. The UI previews the outcome. On `COMMIT_VISIT`, the hook fetches a fresh room snapshot, calls `GameEngine.applyVisitActions()` to replay the staged actions, resolves the winner, then `GameEngine.commitVisit()` persists everything in one transaction. This avoids race conditions when a player pots multiple balls in one real-world visit.
 - `startGame()` only runs in `WAITING`, only for the creator, and only with at least two players.
 - Each player is dealt seven cards at game start.
-- `drawCard()` skips cards whose rank already exists in `pottedCards`.
-- `potCard()` pots a rank, grants the actor a license if needed, and removes that rank from every player's hand.
-- A win is detected when any player's filtered hand reaches zero after potting.
-- `markFoul()` removes the player's license and attempts to draw a non-potted penalty card.
-- `updateJokerCount()` only allows positive increments when the player has a license and never allows counts below zero.
-- Direct joker settlement pays the player above in `turnOrder`.
-- All joker settlement charges all eligible opponents according to the configured amount.
+- Apply helpers (e.g. `applyPotAction`, `applyDrawAction`, `applyMarkFoulAction`, `applyJokerAction`) implement single-action semantics; `applyVisitActions()` replays a list of `VisitAction`s on a room snapshot.
+- A win is detected when any player's filtered hand reaches zero after applying the visit; winner resolution happens at commit time in `commitVisit`.
+- Direct joker settlement pays the player above in `turnOrder`; all joker charges all eligible opponents.
 - Pairwise netting is centralized in `GameEngine.computeSettlements()`.
 
 ## UI and styling conventions
 
 - Dark-mode-only glassmorphism UI.
 - Shared tokens and utility classes live in `src/index.css`.
-- Common utilities include `.glass-panel`, `.btn-primary`, `.container`, and `.animate-fade-in`.
+- Common utilities include `.glass-panel`, `.btn-primary`, `.container`, `.app-scroll`, `.app-footer`, and `.animate-fade-in`.
+- **Layout and scroll**: `#root` is `display: flex; flex-direction: column; min-height: 100dvh`. Main content is wrapped in `.app-scroll` (flex: 1, min-height: 0, overflow-y: auto) so only that area scrolls; the footer (`.app-footer`) is a sibling with flex-shrink: 0 and stays pinned to the bottom of the viewport. Do not set `height: 100%` on `html` or `body`—it prevents the page from scrolling. `.container` is block-level with padding and max-width (no flex: 1).
+- **GameScreen**: Top bar shows Live Match, Room id, Settlement Order, and leaderboard/exit buttons only. The staged-visit bar (Undo, Clear, Commit) appears inline in the "You" panel only when `stagedVisitActions.length > 0`; when empty, no draft UI is shown. Mobile-first: ensure DIRECT/ALL joker controls and footer remain reachable by scrolling within `.app-scroll`.
 - Components use inline styles for local layout and composition.
 - Do not introduce Tailwind, CSS Modules, styled-components, or a competing design system unless explicitly requested.
 

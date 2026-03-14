@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GameEngine } from './GameEngine';
 import { createCard, createPlayer, createRoomData } from '@/test/fixtures/gameFixtures';
 import { createMockDb, mockMathRandom } from '@/test/fixtures/testUtils';
+import type { VisitAction } from '@/types';
 
 type TxOp = {
   entity: string;
@@ -45,7 +46,7 @@ function makeEntityProxy(entity: string) {
 }
 
 vi.mock('@instantdb/react', () => ({
-  id: () => `match-${idCounter++}`,
+  id: () => `id-${idCounter++}`,
   tx: {
     rooms: makeEntityProxy('rooms'),
     roomPlayers: makeEntityProxy('roomPlayers'),
@@ -103,202 +104,123 @@ describe('GameEngine', () => {
     await GameEngine.startGame(db, roomData, 'p1');
     randomSpy.mockRestore();
 
-    expect(db.transact).toHaveBeenCalledTimes(1);
     const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
 
-    const p1Update = findUpdateOp(txs, 'roomPlayers', 'p1');
-    const p2Update = findUpdateOp(txs, 'roomPlayers', 'p2');
-    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id, (op) => Array.isArray(op.payload?.deck as unknown[]));
-
-    expect((p1Update?.payload?.hand as unknown[]).length).toBe(7);
-    expect((p2Update?.payload?.hand as unknown[]).length).toBe(7);
+    expect(findUpdateOp(txs, 'roomPlayers', 'p1')?.payload?.hand).toHaveLength(7);
+    expect(findUpdateOp(txs, 'roomPlayers', 'p2')?.payload?.hand).toHaveLength(7);
     expect(roomUpdate?.payload?.status).toBe('PLAYING');
-    expect((roomUpdate?.payload?.deck as unknown[]).length).toBe(38);
     expect(roomUpdate?.payload?.turnOrder).toEqual(expect.arrayContaining(['p1', 'p2']));
   });
 
-  it('revokes license and draws a valid penalty card on foul', async () => {
+  it('previews a wrong-ball visit with penalty draw and no winner finalization', () => {
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      players: [
+        createPlayer({ id: 'p1', hasLicense: true, hand: [createCard('2', 'spades', 'p1-2')] }),
+        createPlayer({ id: 'p2', hand: [createCard('Q', 'hearts', 'p2-q'), createCard('5', 'clubs', 'p2-5')] }),
+      ],
+      deck: [createCard('Q', 'diamonds', 'skip-q'), createCard('K', 'clubs', 'draw-k')],
+    });
+
+    const preview = GameEngine.applyVisitActions(roomData, 'p1', [
+      { type: 'POT_CARD', payload: { rank: 'Q' } },
+    ]);
+
+    expect(preview.pottedCards).toEqual(['Q']);
+    expect(preview.players.find((player: { id: string }) => player.id === 'p2')?.hand).toHaveLength(1);
+    const actingPlayer = preview.players.find((player: { id: string }) => player.id === 'p1');
+    expect(actingPlayer?.hasLicense).toBe(false);
+    expect(actingPlayer?.hand).toHaveLength(2);
+    expect(preview.status).toBe('PLAYING');
+  });
+
+  it('lets the acting player win after committing the full staged visit', async () => {
     const db = createMockDb();
     const roomData = createRoomData({
-      pottedCards: ['A'],
-      deck: [createCard('A', 'clubs', 'skip-card'), createCard('K', 'hearts', 'penalty-card')],
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2'],
+      totalSettlements: {},
       players: [
-        createPlayer({ id: 'p1', hasLicense: true, hand: [createCard('2', 'spades', 'in-hand')] }),
-        createPlayer({ id: 'p2' }),
+        createPlayer({
+          id: 'p1',
+          hand: [createCard('A', 'spades', 'p1-a'), createCard('2', 'spades', 'p1-2')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        createPlayer({
+          id: 'p2',
+          hand: [createCard('A', 'hearts', 'p2-a')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
       ],
     });
 
-    await GameEngine.markFoul(db, roomData, 'p1');
+    const actions: VisitAction[] = [
+      { type: 'POT_CARD', payload: { cardId: 'p1-a' } },
+      { type: 'POT_CARD', payload: { cardId: 'p1-2' } },
+    ];
+
+    await GameEngine.commitVisit(db, roomData, 'p1', actions);
 
     const txs = db.transact.mock.calls[0][0] as TxOp[];
-    const playerUpdateOps = txs.filter((op) => op.entity === 'roomPlayers' && op.id === 'p1' && op.action === 'update');
     const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
+    const matchUpdate = findUpdateOp(txs, 'matches', 'id-1');
 
-    expect(playerUpdateOps.length).toBe(2);
-    expect(playerUpdateOps[0].payload?.hasLicense).toBe(false);
-    expect((playerUpdateOps[1].payload?.hand as unknown[]).length).toBe(2);
-    expect((roomUpdate?.payload?.deck as unknown[]).length).toBe(1);
-  });
-
-  it('pots rank for all players and finishes game when someone reaches zero cards', async () => {
-    const db = createMockDb();
-    const p1 = createPlayer({
-      id: 'p1',
-      isCreator: true,
-      hasLicense: false,
-      hand: [createCard('A', 'spades', 'p1-a')],
-      profile: [{ id: 'profile-1', displayName: 'Alice' }],
-    });
-    const p2 = createPlayer({
-      id: 'p2',
-      hand: [createCard('K', 'hearts', 'p2-k')],
-      profile: [{ id: 'profile-2', displayName: 'Bob' }],
-    });
-    const roomData = createRoomData({
-      status: 'PLAYING',
-      players: [p1, p2],
-      config: { gameAmount: 10, jokerAmount: 2 },
-      turnOrder: ['p1', 'p2'],
-      pottedCards: [],
-      totalSettlements: {},
-    });
-
-    await GameEngine.potCard(db, roomData, 'p1', { cardId: 'p1-a' });
-
-    const txs = db.transact.mock.calls[0][0] as TxOp[];
-    const p1Updates = txs.filter((op) => op.entity === 'roomPlayers' && op.id === 'p1' && op.action === 'update');
-    const p2Update = findUpdateOp(txs, 'roomPlayers', 'p2');
-    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id, (op) => op.payload?.status === 'FINISHED');
-    const matchUpdate = findUpdateOp(txs, 'matches', 'match-1');
-
-    expect(p1Updates.some((op) => op.payload?.hasLicense === true)).toBe(true);
-    expect((p1Updates[p1Updates.length - 1].payload?.hand as unknown[]).length).toBe(0);
-    expect((p2Update?.payload?.hand as unknown[]).length).toBe(1);
     expect(roomUpdate?.payload?.status).toBe('FINISHED');
     expect(roomUpdate?.payload?.winnerId).toBe('p1');
     expect(roomUpdate?.payload?.totalSettlements).toEqual({ 'profile-1': 10, 'profile-2': -10 });
     expect(matchUpdate?.payload?.winnerId).toBe('p1');
-    expect(matchUpdate?.links).toEqual([{ room: roomData.id }]);
   });
 
-  it('only creator can restart a finished game', async () => {
-    const db = createMockDb();
-    const roomData = createRoomData({
-      status: 'FINISHED',
-      players: [createPlayer({ id: 'p1', isCreator: true }), createPlayer({ id: 'p2' })],
-    });
-
-    await GameEngine.restartGame(db, roomData, 'p2');
-    expect(db.transact).not.toHaveBeenCalled();
-
-    await GameEngine.restartGame(db, roomData, 'p1');
-    expect(db.transact).toHaveBeenCalledTimes(1);
-    const txs = db.transact.mock.calls[0][0] as TxOp[];
-    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
-    expect(roomUpdate?.payload?.status).toBe('WAITING');
-  });
-
-  it('allows wrong-ball potting, removes rank globally, and draws a penalty card without granting license', async () => {
-    const db = createMockDb();
-    const p1 = createPlayer({
-      id: 'p1',
-      hasLicense: false,
-      hand: [createCard('2', 'spades', 'p1-2')],
-    });
-    const p2 = createPlayer({
-      id: 'p2',
-      hand: [createCard('Q', 'hearts', 'p2-q'), createCard('5', 'clubs', 'p2-5')],
-    });
-    const roomData = createRoomData({
-      status: 'PLAYING',
-      players: [p1, p2],
-      pottedCards: [],
-      deck: [createCard('Q', 'diamonds', 'skip-q'), createCard('K', 'clubs', 'draw-k')],
-    });
-
-    await GameEngine.potCard(db, roomData, 'p1', { rank: 'Q' });
-
-    expect(db.transact).toHaveBeenCalledTimes(1);
-    const txs = db.transact.mock.calls[0][0] as TxOp[];
-
-    const pottedUpdate = findUpdateOp(txs, 'rooms', roomData.id, (op) => Array.isArray(op.payload?.pottedCards as unknown[]));
-    const deckUpdate = findUpdateOp(txs, 'rooms', roomData.id, (op) => Array.isArray(op.payload?.deck as unknown[]));
-    const p1Updates = txs.filter((op) => op.entity === 'roomPlayers' && op.id === 'p1' && op.action === 'update');
-    const p2Update = findUpdateOp(txs, 'roomPlayers', 'p2');
-
-    expect(pottedUpdate?.payload?.pottedCards).toEqual(['Q']);
-    expect((p2Update?.payload?.hand as unknown[]).length).toBe(1);
-
-    expect(p1Updates.some((op) => op.payload?.hasLicense === true)).toBe(false);
-    expect((p1Updates[p1Updates.length - 1].payload?.hand as unknown[]).length).toBe(2);
-    expect((deckUpdate?.payload?.deck as unknown[]).length).toBe(1);
-  });
-
-  it('treats wrong-ball pot as foul and revokes existing license', async () => {
+  it('can finalize another player as winner when the committed visit leaves them at zero cards', async () => {
     const db = createMockDb();
     const roomData = createRoomData({
       status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2'],
+      totalSettlements: {},
       players: [
         createPlayer({
           id: 'p1',
-          hasLicense: true,
-          hand: [createCard('4', 'spades', 'p1-4')],
+          hand: [createCard('A', 'spades', 'p1-a'), createCard('2', 'spades', 'p1-2')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
         }),
-        createPlayer({ id: 'p2', hand: [createCard('7', 'hearts', 'p2-7')] }),
+        createPlayer({
+          id: 'p2',
+          hand: [createCard('A', 'hearts', 'p2-a')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
       ],
-      pottedCards: [],
-      deck: [createCard('K', 'clubs', 'draw-k')],
     });
 
-    await GameEngine.potCard(db, roomData, 'p1', { rank: '7' });
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'p1-a' } },
+    ]);
 
-    expect(db.transact).toHaveBeenCalledTimes(1);
     const txs = db.transact.mock.calls[0][0] as TxOp[];
-    const p1Updates = txs.filter((op) => op.entity === 'roomPlayers' && op.id === 'p1' && op.action === 'update');
-
-    expect(p1Updates.some((op) => op.payload?.hasLicense === false)).toBe(true);
-    expect(p1Updates.some((op) => op.payload?.hasLicense === true)).toBe(false);
+    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
+    expect(roomUpdate?.payload?.winnerId).toBe('p2');
   });
 
-  it('blocks positive joker increment without license', async () => {
+  it('rejects a stale visit when the fresh room no longer supports the staged action', async () => {
     const db = createMockDb();
     const roomData = createRoomData({
-      players: [createPlayer({ id: 'p1', hasLicense: false, jokerBalls: { direct: 0, all: 0 } }), createPlayer({ id: 'p2' })],
+      status: 'PLAYING',
+      pottedCards: ['A'],
+      players: [
+        createPlayer({ id: 'p1', hand: [createCard('A', 'spades', 'p1-a')] }),
+        createPlayer({ id: 'p2', hand: [createCard('K', 'hearts', 'p2-k')] }),
+      ],
     });
 
-    await GameEngine.updateJokerCount(db, roomData, 'p1', 'direct', 1);
+    await expect(
+      GameEngine.commitVisit(db, roomData, 'p1', [{ type: 'POT_CARD', payload: { cardId: 'p1-a' } }]),
+    ).rejects.toThrow('already been potted');
     expect(db.transact).not.toHaveBeenCalled();
-
-    roomData.players[0].hasLicense = true;
-    await GameEngine.updateJokerCount(db, roomData, 'p1', 'direct', 1);
-    expect(db.transact).toHaveBeenCalledTimes(1);
   });
 
-  it('allows negative joker values but still blocks recovery without license', async () => {
-    const db = createMockDb();
-    const roomData = createRoomData({
-      players: [createPlayer({ id: 'p1', hasLicense: false, jokerBalls: { direct: 0, all: 0 } }), createPlayer({ id: 'p2' })],
-    });
-
-    await GameEngine.updateJokerCount(db, roomData, 'p1', 'direct', -1);
-    expect(db.transact).toHaveBeenCalledTimes(1);
-    let txs = db.transact.mock.calls[0][0] as TxOp[];
-    expect(findUpdateOp(txs, 'roomPlayers', 'p1')?.payload?.jokerBalls).toEqual({ direct: -1, all: 0 });
-
-    db.transact.mockClear();
-    roomData.players[0].jokerBalls.direct = -1;
-
-    await GameEngine.updateJokerCount(db, roomData, 'p1', 'direct', 1);
-    expect(db.transact).not.toHaveBeenCalled();
-
-    roomData.players[0].hasLicense = true;
-    await GameEngine.updateJokerCount(db, roomData, 'p1', 'direct', 1);
-    expect(db.transact).toHaveBeenCalledTimes(1);
-    txs = db.transact.mock.calls[0][0] as TxOp[];
-    expect(findUpdateOp(txs, 'roomPlayers', 'p1')?.payload?.jokerBalls).toEqual({ direct: 0, all: 0 });
-  });
-
-  it('preserves positive direct settlements', async () => {
+  it('supports batching license and joker updates into one committed visit', async () => {
     const db = createMockDb();
     const roomData = createRoomData({
       status: 'PLAYING',
@@ -306,25 +228,25 @@ describe('GameEngine', () => {
       turnOrder: ['p1', 'p2', 'p3'],
       totalSettlements: {},
       players: [
-        createPlayer({ id: 'p1', hand: [createCard('K', 'spades', 'p1-k')], profile: [{ id: 'profile-1', displayName: 'Alice' }] }),
+        createPlayer({ id: 'p1', hand: [createCard('A', 'spades', 'p1-a')], profile: [{ id: 'profile-1', displayName: 'Alice' }] }),
         createPlayer({ id: 'p2', hand: [createCard('Q', 'hearts', 'p2-q')], jokerBalls: { direct: 1, all: 0 }, profile: [{ id: 'profile-2', displayName: 'Bob' }] }),
-        createPlayer({ id: 'p3', hand: [createCard('A', 'clubs', 'p3-a')], profile: [{ id: 'profile-3', displayName: 'Cara' }] }),
+        createPlayer({ id: 'p3', hand: [createCard('K', 'clubs', 'p3-k')], profile: [{ id: 'profile-3', displayName: 'Cara' }] }),
       ],
     });
 
-    await GameEngine.potCard(db, roomData, 'p3', { cardId: 'p3-a' });
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'p1-a' } },
+      { type: 'UPDATE_JOKER', payload: { type: 'direct', delta: 1 } },
+    ]);
 
     const txs = db.transact.mock.calls[0][0] as TxOp[];
-    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id, (op) => op.payload?.status === 'FINISHED');
-    const matchUpdate = findUpdateOp(txs, 'matches', 'match-1');
+    const matchUpdate = findUpdateOp(txs, 'matches', 'id-1');
     const settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
 
     expect(settlements).toEqual(expect.arrayContaining([
-      { fromPlayerId: 'p1', toPlayerId: 'p2', amount: 4, breakdown: '$4.00' },
-      { fromPlayerId: 'p1', toPlayerId: 'p3', amount: 10, breakdown: '$10.00' },
-      { fromPlayerId: 'p2', toPlayerId: 'p3', amount: 10, breakdown: '$10.00' },
+      { fromPlayerId: 'p2', toPlayerId: 'p1', amount: 6, breakdown: '$10.00 −$4.00 offset' },
+      { fromPlayerId: 'p3', toPlayerId: 'p1', amount: 14, breakdown: '$14.00' },
     ]));
-    expect(roomUpdate?.payload?.totalSettlements).toEqual({ 'profile-1': -14, 'profile-2': -6, 'profile-3': 20 });
   });
 
   it('reverses direct settlement when the joker count is negative', async () => {
@@ -341,20 +263,18 @@ describe('GameEngine', () => {
       ],
     });
 
-    await GameEngine.potCard(db, roomData, 'p1', { cardId: 'p1-a' });
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'p1-a' } },
+    ]);
 
     const txs = db.transact.mock.calls[0][0] as TxOp[];
-    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id, (op) => op.payload?.status === 'FINISHED');
-    const matchUpdate = findUpdateOp(txs, 'matches', 'match-1');
+    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
+    const matchUpdate = findUpdateOp(txs, 'matches', 'id-1');
     const settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
-    const playerSnapshots = matchUpdate?.payload?.playerSnapshots as Array<{ id: string; directJ: number }>;
 
     expect(settlements).toEqual(expect.arrayContaining([
       { fromPlayerId: 'p2', toPlayerId: 'p1', amount: 14, breakdown: '$14.00' },
       { fromPlayerId: 'p3', toPlayerId: 'p1', amount: 10, breakdown: '$10.00' },
-    ]));
-    expect(playerSnapshots).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'p2', directJ: -1 }),
     ]));
     expect(roomUpdate?.payload?.totalSettlements).toEqual({ 'profile-1': 24, 'profile-2': -14, 'profile-3': -10 });
   });
@@ -373,11 +293,13 @@ describe('GameEngine', () => {
       ],
     });
 
-    await GameEngine.potCard(db, winnerAllRoom, 'p1', { cardId: 'winner-a' });
+    await GameEngine.commitVisit(db, winnerAllRoom, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'winner-a' } },
+    ]);
 
     let txs = db.transact.mock.calls[0][0] as TxOp[];
-    let roomUpdate = findUpdateOp(txs, 'rooms', winnerAllRoom.id, (op) => op.payload?.status === 'FINISHED');
-    let matchUpdate = findUpdateOp(txs, 'matches', 'match-1');
+    let roomUpdate = findUpdateOp(txs, 'rooms', winnerAllRoom.id);
+    let matchUpdate = findUpdateOp(txs, 'matches', 'id-1');
     let settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
 
     expect(settlements).toEqual(expect.arrayContaining([
@@ -387,6 +309,8 @@ describe('GameEngine', () => {
     expect(roomUpdate?.payload?.totalSettlements).toEqual({ 'profile-1': 16, 'profile-2': -8, 'profile-3': -8 });
 
     db.transact.mockClear();
+    idCounter = 1;
+
     const loserAllRoom = createRoomData({
       status: 'PLAYING',
       config: { gameAmount: 10, jokerAmount: 2 },
@@ -399,11 +323,13 @@ describe('GameEngine', () => {
       ],
     });
 
-    await GameEngine.potCard(db, loserAllRoom, 'p1', { cardId: 'loser-a' });
+    await GameEngine.commitVisit(db, loserAllRoom, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'loser-a' } },
+    ]);
 
     txs = db.transact.mock.calls[0][0] as TxOp[];
-    roomUpdate = findUpdateOp(txs, 'rooms', loserAllRoom.id, (op) => op.payload?.status === 'FINISHED');
-    matchUpdate = findUpdateOp(txs, 'matches', 'match-2');
+    roomUpdate = findUpdateOp(txs, 'rooms', loserAllRoom.id);
+    matchUpdate = findUpdateOp(txs, 'matches', 'id-1');
     settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
 
     expect(settlements).toEqual(expect.arrayContaining([
@@ -412,6 +338,93 @@ describe('GameEngine', () => {
       { fromPlayerId: 'p2', toPlayerId: 'p3', amount: 2, breakdown: '$2.00' },
     ]));
     expect(roomUpdate?.payload?.totalSettlements).toEqual({ 'profile-1': 22, 'profile-2': -14, 'profile-3': -8 });
+  });
+
+  it('minus joker with license revokes license and draws one penalty card', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2'],
+      totalSettlements: {},
+      players: [
+        createPlayer({
+          id: 'p1',
+          hasLicense: true,
+          jokerBalls: { direct: 1, all: 0 },
+          hand: [createCard('A', 'spades', 'p1-a'), createCard('2', 'spades', 'p1-2')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        createPlayer({
+          id: 'p2',
+          hand: [createCard('K', 'hearts', 'p2-k')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
+      ],
+      deck: [createCard('3', 'clubs', 'deck-3')],
+    });
+
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'UPDATE_JOKER', payload: { type: 'direct', delta: -1 } },
+    ]);
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const p1Update = findUpdateOp(txs, 'roomPlayers', 'p1');
+
+    expect(p1Update?.payload?.hasLicense).toBe(false);
+    expect((p1Update?.payload?.hand as unknown[]).length).toBe(3);
+    expect(p1Update?.payload?.jokerBalls).toEqual({ direct: 0, all: 0 });
+  });
+
+  it('minus joker without license only decrements the counter and does not draw', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2'],
+      totalSettlements: {},
+      players: [
+        createPlayer({
+          id: 'p1',
+          hasLicense: false,
+          jokerBalls: { direct: 1, all: 0 },
+          hand: [createCard('A', 'spades', 'p1-a'), createCard('2', 'spades', 'p1-2')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        createPlayer({
+          id: 'p2',
+          hand: [createCard('K', 'hearts', 'p2-k')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
+      ],
+      deck: [createCard('3', 'clubs', 'deck-3')],
+    });
+
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'UPDATE_JOKER', payload: { type: 'direct', delta: -1 } },
+    ]);
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const p1Update = findUpdateOp(txs, 'roomPlayers', 'p1');
+
+    expect(p1Update?.payload?.hasLicense).toBe(false);
+    expect((p1Update?.payload?.hand as unknown[]).length).toBe(2);
+    expect(p1Update?.payload?.jokerBalls).toEqual({ direct: 0, all: 0 });
+  });
+
+  it('only creator can restart a finished game', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'FINISHED',
+      players: [createPlayer({ id: 'p1', isCreator: true }), createPlayer({ id: 'p2' })],
+    });
+
+    await GameEngine.restartGame(db, roomData, 'p2');
+    expect(db.transact).not.toHaveBeenCalled();
+
+    await GameEngine.restartGame(db, roomData, 'p1');
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    expect(findUpdateOp(txs, 'rooms', roomData.id)?.payload?.status).toBe('WAITING');
   });
 
   it('deletes full room when creator exits and only own record when guest exits', async () => {

@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { db } from '../lib/db';
-import type { ClientMessage, GameState, GameStatus } from '../types';
+import type { ClientMessage, GameState, GameStatus, VisitAction } from '../types';
 import { id, tx } from '@instantdb/react';
 import { GameEngine } from '../lib/GameEngine.ts';
+import { useEffect, useRef, useState } from 'react';
+import { useAlert } from '../components/AlertContext';
 
 /** Generate a short 8-character alphanumeric room code */
 function generateRoomCode(): string {
@@ -16,6 +18,22 @@ function generateRoomCode(): string {
 }
 
 export function useGameState() {
+    const { showAlert } = useAlert();
+    const remoteActionInFlightRef = useRef(false);
+    const draftActionsRef = useRef<VisitAction[]>([]);
+    const [draftActions, setDraftActions] = useState<VisitAction[]>([]);
+    const remoteActions = new Set<ClientMessage['type']>([
+        'CREATE_ROOM',
+        'JOIN_ROOM',
+        'EXIT_ROOM',
+        'START_GAME',
+        'COMMIT_VISIT',
+        'RESTART_GAME',
+        'DRAW_CARD',
+        'MARK_FOUL',
+        'UPDATE_JOKER'
+    ]);
+
     // 1. Auth state
     const { user, isLoading: isAuthLoading } = db.useAuth();
 
@@ -57,11 +75,33 @@ export function useGameState() {
     const activeRoomRaw = activeRoomPlayer?.room;
     const activeRoom = Array.isArray(activeRoomRaw) ? activeRoomRaw[0] : activeRoomRaw;
 
+    useEffect(() => {
+        draftActionsRef.current = draftActions;
+    }, [draftActions]);
+
+    useEffect(() => {
+        draftActionsRef.current = [];
+        setDraftActions([]);
+    }, [activeRoom?.id, activeRoom?.status]);
+
     // Build the GameState object that the UI expects
     let gameState: GameState | null = null;
 
     if (activeRoom) {
-        const roomPlayersData = activeRoom.players || [];
+        const baseRoomData = {
+            ...activeRoom,
+            players: activeRoom.players || []
+        };
+        let displayRoomData = baseRoomData;
+        if (activePlayerId && activeRoom.status === 'PLAYING' && draftActions.length > 0) {
+            try {
+                displayRoomData = GameEngine.applyVisitActions(baseRoomData, activePlayerId, draftActions);
+            } catch {
+                displayRoomData = baseRoomData;
+            }
+        }
+
+        const roomPlayersData = displayRoomData.players || [];
         const matches = activeRoom.matches || [];
 
         // Sort matches by timestamp to get correct history
@@ -97,9 +137,10 @@ export function useGameState() {
             roomId: activeRoom.roomCode || activeRoom.id,
             config: activeRoom.config,
             status: activeRoom.status as GameStatus,
-            pottedCards: activeRoom.pottedCards || [],
-            deckCount: activeRoom.deck ? activeRoom.deck.length : 0,
+            pottedCards: displayRoomData.pottedCards || [],
+            deckCount: displayRoomData.deck ? displayRoomData.deck.length : 0,
             winnerId: activeRoom.winnerId || null,
+            stagedVisitActions: draftActions,
             players: sortedPlayersData.map((rp: any) => ({
                 id: rp.id,
                 profileId: rp.profile?.[0]?.id || rp.profile?.id || null,
@@ -123,8 +164,46 @@ export function useGameState() {
         players: activeRoom.players || []
     } : null;
 
+    const getFreshRoomData = async () => {
+        if (!activeRoom?.id) return null;
+
+        const roomLookup = await db.queryOnce({
+            rooms: {
+                $: { where: { id: activeRoom.id } },
+                players: {
+                    profile: {}
+                },
+                matches: {}
+            }
+        });
+
+        const latestRoom = roomLookup.data?.rooms?.[0];
+        if (!latestRoom) return null;
+
+        return {
+            ...latestRoom,
+            players: latestRoom.players || [],
+            matches: latestRoom.matches || [],
+        };
+    };
+
+    const stageVisitAction = (action: VisitAction) => {
+        if (!roomData || roomData.status !== 'PLAYING' || !activePlayerId) return;
+
+        const nextDraftActions = [...draftActions, action];
+        GameEngine.applyVisitActions(roomData, activePlayerId, nextDraftActions);
+        draftActionsRef.current = nextDraftActions;
+        setDraftActions(nextDraftActions);
+    };
+
     const sendMessage = async (msg: ClientMessage) => {
         if (!user) return;
+        const shouldLockRemoteAction = remoteActions.has(msg.type);
+
+        if (shouldLockRemoteAction) {
+            if (remoteActionInFlightRef.current) return;
+            remoteActionInFlightRef.current = true;
+        }
 
         try {
             switch (msg.type) {
@@ -136,7 +215,7 @@ export function useGameState() {
 
                     const profileId = resolvedProfile?.id;
                     if (!profileId) {
-                        alert('Profile not found. Please set up your profile first.');
+                        showAlert('Profile not found. Please set up your profile first.', 'error');
                         return;
                     }
 
@@ -169,7 +248,7 @@ export function useGameState() {
 
                     const profileId = resolvedProfile?.id;
                     if (!profileId) {
-                        alert('Profile not found. Please set up your profile first.');
+                        showAlert('Profile not found. Please set up your profile first.', 'error');
                         return;
                     }
 
@@ -179,7 +258,7 @@ export function useGameState() {
                     });
                     const targetRoom = roomLookup.data?.rooms?.[0];
                     if (!targetRoom) {
-                        alert('Room not found. Please check the code and try again.');
+                        showAlert('Room not found. Please check the code and try again.', 'error');
                         return;
                     }
 
@@ -205,22 +284,64 @@ export function useGameState() {
                 }
                 // --- Game Engine Logic ---
                 case 'START_GAME':
-                    if (activeRoom && activePlayerId) await GameEngine.startGame(db, roomData, activePlayerId);
+                    if (activeRoom && activePlayerId) {
+                        const latestRoomData = await getFreshRoomData();
+                        if (latestRoomData) await GameEngine.startGame(db, latestRoomData, activePlayerId);
+                    }
                     break;
                 case 'DRAW_CARD':
-                    if (activeRoom && activePlayerId) await GameEngine.drawCard(db, roomData, activePlayerId);
+                    if (activeRoom && activePlayerId && activeRoom.status === 'PLAYING') {
+                        const latestRoomData = await getFreshRoomData();
+                        if (latestRoomData) await GameEngine.commitVisit(db, latestRoomData, activePlayerId, [{ type: 'DRAW_CARD' }]);
+                    }
                     break;
-                case 'POT_CARD':
-                    if (activeRoom && activePlayerId) await GameEngine.potCard(db, roomData, activePlayerId, msg.payload);
+                case 'POT_CARD': {
+                    const payload = msg.payload as { cardId?: string; rank?: string };
+                    if (payload && 'rank' in payload && payload.rank) {
+                        if (activeRoom && activePlayerId && activeRoom.status === 'PLAYING') {
+                            const latestRoomData = await getFreshRoomData();
+                            if (latestRoomData) await GameEngine.commitVisit(db, latestRoomData, activePlayerId, [{ type: 'POT_CARD', payload: msg.payload }]);
+                        }
+                    } else {
+                        stageVisitAction({ type: 'POT_CARD', payload: msg.payload });
+                    }
                     break;
+                }
                 case 'MARK_FOUL':
-                    if (activeRoom && activePlayerId) await GameEngine.markFoul(db, roomData, activePlayerId);
+                    if (activeRoom && activePlayerId && activeRoom.status === 'PLAYING') {
+                        const latestRoomData = await getFreshRoomData();
+                        if (latestRoomData) await GameEngine.commitVisit(db, latestRoomData, activePlayerId, [{ type: 'MARK_FOUL' }]);
+                    }
                     break;
                 case 'UPDATE_JOKER':
-                    if (activeRoom && activePlayerId) await GameEngine.updateJokerCount(db, roomData, activePlayerId, msg.payload.type, msg.payload.delta);
+                    if (activeRoom && activePlayerId && activeRoom.status === 'PLAYING') {
+                        const latestRoomData = await getFreshRoomData();
+                        if (latestRoomData) await GameEngine.commitVisit(db, latestRoomData, activePlayerId, [{ type: 'UPDATE_JOKER', payload: msg.payload }]);
+                    }
+                    break;
+                case 'UNDO_VISIT_ACTION':
+                    draftActionsRef.current = draftActionsRef.current.slice(0, -1);
+                    setDraftActions(draftActionsRef.current);
+                    break;
+                case 'CLEAR_VISIT_DRAFT':
+                    draftActionsRef.current = [];
+                    setDraftActions([]);
+                    break;
+                case 'COMMIT_VISIT':
+                    if (activeRoom && activePlayerId && draftActionsRef.current.length > 0) {
+                        const latestRoomData = await getFreshRoomData();
+                        if (latestRoomData) {
+                            await GameEngine.commitVisit(db, latestRoomData, activePlayerId, draftActionsRef.current);
+                            draftActionsRef.current = [];
+                            setDraftActions([]);
+                        }
+                    }
                     break;
                 case 'RESTART_GAME':
-                    if (activeRoom && activePlayerId) await GameEngine.restartGame(db, roomData, activePlayerId);
+                    if (activeRoom && activePlayerId) {
+                        const latestRoomData = await getFreshRoomData();
+                        if (latestRoomData) await GameEngine.restartGame(db, latestRoomData, activePlayerId);
+                    }
                     break;
                 case 'RECONNECT':
                     // No-op: with InstantDB, the user's active room is always
@@ -228,7 +349,11 @@ export function useGameState() {
                     break;
             }
         } catch (e: any) {
-            alert("Action failed: " + e.message);
+            showAlert("Action failed: " + e.message, 'error');
+        } finally {
+            if (shouldLockRemoteAction) {
+                remoteActionInFlightRef.current = false;
+            }
         }
     };
 
