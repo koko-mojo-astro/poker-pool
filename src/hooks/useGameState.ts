@@ -26,7 +26,10 @@ export function useGameState() {
         'EXIT_ROOM',
         'START_GAME',
         'COMMIT_VISIT',
-        'RESTART_GAME'
+        'RESTART_GAME',
+        'DRAW_CARD',
+        'MARK_FOUL',
+        'UPDATE_JOKER'
     ]);
 
     // 1. Auth state
@@ -285,16 +288,34 @@ export function useGameState() {
                     }
                     break;
                 case 'DRAW_CARD':
-                    stageVisitAction({ type: 'DRAW_CARD' });
+                    if (activeRoom && activePlayerId && activeRoom.status === 'PLAYING') {
+                        const latestRoomData = await getFreshRoomData();
+                        if (latestRoomData) await GameEngine.commitVisit(db, latestRoomData, activePlayerId, [{ type: 'DRAW_CARD' }]);
+                    }
                     break;
-                case 'POT_CARD':
-                    stageVisitAction({ type: 'POT_CARD', payload: msg.payload });
+                case 'POT_CARD': {
+                    const payload = msg.payload as { cardId?: string; rank?: string };
+                    if (payload && 'rank' in payload && payload.rank) {
+                        if (activeRoom && activePlayerId && activeRoom.status === 'PLAYING') {
+                            const latestRoomData = await getFreshRoomData();
+                            if (latestRoomData) await GameEngine.commitVisit(db, latestRoomData, activePlayerId, [{ type: 'POT_CARD', payload: msg.payload }]);
+                        }
+                    } else {
+                        stageVisitAction({ type: 'POT_CARD', payload: msg.payload });
+                    }
                     break;
+                }
                 case 'MARK_FOUL':
-                    stageVisitAction({ type: 'MARK_FOUL' });
+                    if (activeRoom && activePlayerId && activeRoom.status === 'PLAYING') {
+                        const latestRoomData = await getFreshRoomData();
+                        if (latestRoomData) await GameEngine.commitVisit(db, latestRoomData, activePlayerId, [{ type: 'MARK_FOUL' }]);
+                    }
                     break;
                 case 'UPDATE_JOKER':
-                    stageVisitAction({ type: 'UPDATE_JOKER', payload: msg.payload });
+                    if (activeRoom && activePlayerId && activeRoom.status === 'PLAYING') {
+                        const latestRoomData = await getFreshRoomData();
+                        if (latestRoomData) await GameEngine.commitVisit(db, latestRoomData, activePlayerId, [{ type: 'UPDATE_JOKER', payload: msg.payload }]);
+                    }
                     break;
                 case 'UNDO_VISIT_ACTION':
                     draftActionsRef.current = draftActionsRef.current.slice(0, -1);

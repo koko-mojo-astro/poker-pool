@@ -190,4 +190,108 @@ describe('useGameState gameplay actions', () => {
     );
     expect(result.current.gameState?.stagedVisitActions).toEqual([]);
   });
+
+  it('applies wrong-ball pot immediately without staging', async () => {
+    const room = createRoom();
+    mockUseQuery.mockReturnValue({
+      data: createUserQueryData(room),
+      isLoading: false,
+    });
+    mockQueryOnce.mockResolvedValue({
+      data: { rooms: [room] },
+    });
+
+    const { result } = renderHook(() => useGameState());
+
+    await act(async () => {
+      await result.current.sendMessage({ type: 'POT_CARD', payload: { rank: 'Q' } });
+    });
+
+    expect(mockQueryOnce).toHaveBeenCalled();
+    expect(mockCommitVisit).toHaveBeenCalledWith(
+      expect.objectContaining({ queryOnce: mockQueryOnce }),
+      expect.objectContaining({ id: 'room-1' }),
+      'p1',
+      [{ type: 'POT_CARD', payload: { rank: 'Q' } }],
+    );
+    expect(result.current.gameState?.stagedVisitActions).toEqual([]);
+  });
+
+  it('applies DRAW_CARD immediately without staging', async () => {
+    const room = createRoom();
+    mockUseQuery.mockReturnValue({
+      data: createUserQueryData(room),
+      isLoading: false,
+    });
+    mockQueryOnce.mockResolvedValue({
+      data: { rooms: [room] },
+    });
+
+    const { result } = renderHook(() => useGameState());
+
+    await act(async () => {
+      await result.current.sendMessage({ type: 'DRAW_CARD' });
+    });
+
+    expect(mockQueryOnce).toHaveBeenCalled();
+    expect(mockCommitVisit).toHaveBeenCalledWith(
+      expect.objectContaining({ queryOnce: mockQueryOnce }),
+      expect.objectContaining({ id: 'room-1' }),
+      'p1',
+      [{ type: 'DRAW_CARD' }],
+    );
+    expect(result.current.gameState?.stagedVisitActions).toEqual([]);
+  });
+
+  it('applies MARK_FOUL immediately without staging', async () => {
+    const room = createRoom();
+    mockUseQuery.mockReturnValue({
+      data: createUserQueryData(room),
+      isLoading: false,
+    });
+    mockQueryOnce.mockResolvedValue({
+      data: { rooms: [room] },
+    });
+
+    const { result } = renderHook(() => useGameState());
+
+    await act(async () => {
+      await result.current.sendMessage({ type: 'MARK_FOUL' });
+    });
+
+    expect(mockQueryOnce).toHaveBeenCalled();
+    expect(mockCommitVisit).toHaveBeenCalledWith(
+      expect.objectContaining({ queryOnce: mockQueryOnce }),
+      expect.objectContaining({ id: 'room-1' }),
+      'p1',
+      [{ type: 'MARK_FOUL' }],
+    );
+    expect(result.current.gameState?.stagedVisitActions).toEqual([]);
+  });
+
+  it('applies UPDATE_JOKER immediately without staging', async () => {
+    const room = createRoom();
+    mockUseQuery.mockReturnValue({
+      data: createUserQueryData(room),
+      isLoading: false,
+    });
+    mockQueryOnce.mockResolvedValue({
+      data: { rooms: [room] },
+    });
+
+    const { result } = renderHook(() => useGameState());
+
+    await act(async () => {
+      await result.current.sendMessage({ type: 'UPDATE_JOKER', payload: { type: 'direct', delta: 1 } });
+    });
+
+    expect(mockQueryOnce).toHaveBeenCalled();
+    expect(mockCommitVisit).toHaveBeenCalledWith(
+      expect.objectContaining({ queryOnce: mockQueryOnce }),
+      expect.objectContaining({ id: 'room-1' }),
+      'p1',
+      [{ type: 'UPDATE_JOKER', payload: { type: 'direct', delta: 1 } }],
+    );
+    expect(result.current.gameState?.stagedVisitActions).toEqual([]);
+  });
 });

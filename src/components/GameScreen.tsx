@@ -53,8 +53,8 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
         if (!wrongPotOptions.includes(selectedWrongPotRank)) return;
         void Promise.resolve(sendMessage({ type: 'POT_CARD', payload: { rank: selectedWrongPotRank } }));
         const followup = myPlayer?.hasLicense
-            ? `Wrong ball ${selectedWrongPotRank} added to draft: foul and penalty will apply on commit.`
-            : `Wrong ball ${selectedWrongPotRank} added to draft.`;
+            ? `Wrong ball ${selectedWrongPotRank} applied: foul and penalty applied.`
+            : `Wrong ball ${selectedWrongPotRank} applied.`;
         showToast(followup, 'error');
         setShowWrongBallModal(false);
     };
@@ -62,18 +62,18 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
     const handleDraw = () => {
         if (isCommittingDraft) return;
         void Promise.resolve(sendMessage({ type: 'DRAW_CARD' }));
-        showToast('Draw added to draft.', 'info');
+        showToast('Draw applied.', 'info');
     };
 
     const handleFoul = () => {
         if (confirm('Are you sure you want to mark a foul? You will lose your license and draw a card.')) {
             void Promise.resolve(sendMessage({ type: 'MARK_FOUL' }));
-            showToast('Foul added to draft.', 'error');
+            showToast('Foul applied.', 'error');
         }
     };
 
     const handleUpdateJoker = (type: 'direct' | 'all', delta: 1 | -1) => {
-        if (isCommittingDraft) return;
+        if (isCommittingDraft || !myPlayer) return;
 
         if (delta === -1) {
             const msg = myPlayer.hasLicense
@@ -83,6 +83,7 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
         }
 
         void Promise.resolve(sendMessage({ type: 'UPDATE_JOKER', payload: { type, delta } }));
+        showToast('Joker updated.', 'info');
     };
 
     const handleUndoLast = () => {

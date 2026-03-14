@@ -41,7 +41,7 @@ Use this skill when working anywhere in this repository.
 ## Game Logic Checklist
 
 - `startGame()` only runs for the creator while the room is in `WAITING` and has at least two players.
-- Gameplay uses a **batched visit flow**: actions (pot, draw, foul, joker) are staged locally in `stagedVisitActions`; the UI shows a preview; the user commits with `COMMIT_VISIT`. `GameEngine.applyVisitActions()` replays actions on a room snapshot; `GameEngine.commitVisit()` runs against a fresh room, resolves the winner, and persists in one transaction. There are no turn-based fields.
+- Gameplay visit flow: only **normal pot** (POT_CARD with `cardId`) is staged in `stagedVisitActions` and committed with `COMMIT_VISIT`. **Wrong-ball pot** (POT_CARD with `rank`), **draw**, **foul**, and **joker** apply immediately: `sendMessage` gets a fresh room and calls `GameEngine.commitVisit(db, roomData, playerId, [single action])` with no staging. `GameEngine.applyVisitActions()` replays actions on a room snapshot; `GameEngine.commitVisit()` runs against a fresh room, resolves the winner, and persists in one transaction. There are no turn-based fields.
 - `pottedCards` stores ranks only.
 - Potting a rank removes every card of that rank from every player's hand.
 - A successful first pot grants a license.
@@ -66,7 +66,7 @@ Use this skill when working anywhere in this repository.
 
 1. Update the `ClientMessage` union and, if needed, the `VisitAction` type in `src/types.ts` (e.g. for new staged actions or `UNDO_VISIT_ACTION`, `CLEAR_VISIT_DRAFT`, `COMMIT_VISIT`).
 2. For visit-scoped actions: add or update pure apply logic in `GameEngine` (e.g. `applyPotAction`, `applyVisitActions`) and the single commit path `commitVisit`; do not add per-action commit methods.
-3. Wire the action through `sendMessage` in `src/hooks/useGameState.ts` (staging vs commit: stage updates local `stagedVisitActions`, commit calls `GameEngine.commitVisit` with a fresh room snapshot).
+3. Wire the action through `sendMessage` in `src/hooks/useGameState.ts`. **Immediate-apply actions** (wrong-ball pot, draw, foul, joker): get fresh room data and call `GameEngine.commitVisit(db, roomData, playerId, [single action])`; do not stage. **Draft-only:** normal pot (POT_CARD with `cardId`) uses `stageVisitAction`; the user commits with `COMMIT_VISIT`, which calls `GameEngine.commitVisit` with all staged actions.
 4. Update the relevant screen component to call `sendMessage` and, if needed, show the staged-visit bar (only when `stagedVisitActions.length > 0`).
 5. Verify the resulting InstantDB shape still matches `src/instant.schema.ts`.
 

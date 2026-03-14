@@ -109,13 +109,13 @@ describe('GameScreen batched visit flow', () => {
             ['A'],
             [
                 { type: 'POT_CARD', payload: { cardId: 'a1' } },
-                { type: 'UPDATE_JOKER', payload: { type: 'direct', delta: 1 } },
+                { type: 'POT_CARD', payload: { cardId: 'c2' } },
             ],
         );
         renderGameScreen(state);
 
         expect(screen.getByText('2 ACTIONS STAGED')).toBeTruthy();
-        expect(screen.getByText('DIRECT +1')).toBeTruthy();
+        expect(screen.getByText('Pot card')).toBeTruthy();
     });
 
     it('sends COMMIT_VISIT when the draft is committed', async () => {
