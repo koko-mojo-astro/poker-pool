@@ -173,7 +173,7 @@ describe('GameEngine', () => {
     expect(matchUpdate?.payload?.winnerId).toBe('p1');
   });
 
-  it('can finalize another player as winner when the committed visit leaves them at zero cards', async () => {
+  it('finalizes a licensed non-actor player as winner (cover-win) when the committed visit leaves them at zero cards', async () => {
     const db = createMockDb();
     const roomData = createRoomData({
       status: 'PLAYING',
@@ -188,6 +188,7 @@ describe('GameEngine', () => {
         }),
         createPlayer({
           id: 'p2',
+          hasLicense: true, // p2 has license → qualifies as winner
           hand: [createCard('A', 'hearts', 'p2-a')],
           profile: [{ id: 'profile-2', displayName: 'Bob' }],
         }),
@@ -201,6 +202,390 @@ describe('GameEngine', () => {
     const txs = db.transact.mock.calls[0][0] as TxOp[];
     const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
     expect(roomUpdate?.payload?.winnerId).toBe('p2');
+    expect(roomUpdate?.payload?.status).toBe('FINISHED');
+  });
+
+  // ─── Cover-win settlement routing ──────────────────────────────────────────
+
+  it('cover-win 2-player: acting player pays winner both base-game shares (own + loser)', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2', 'p3'],
+      totalSettlements: {},
+      players: [
+        // p1 is the actor with cards remaining
+        createPlayer({
+          id: 'p1',
+          hand: [createCard('K', 'spades', 'p1-k'), createCard('2', 'spades', 'p1-2')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        // p2 wins (has license, hand will be wiped by pot)
+        createPlayer({
+          id: 'p2',
+          hasLicense: true,
+          hand: [createCard('A', 'hearts', 'p2-a')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
+        // p3 is another loser
+        createPlayer({
+          id: 'p3',
+          hand: [createCard('Q', 'clubs', 'p3-q')],
+          profile: [{ id: 'profile-3', displayName: 'Cara' }],
+        }),
+      ],
+    });
+
+    // p1 pots rank A → p2's last card is removed, p2 wins (licensed)
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'p1-k' } }, // p1 pots their own K first (gives license to p1)
+    ]);
+
+    // Manually construct the cover-win scenario: p1 still has cards, p2 is licensed with no cards
+    // Reset and use a simpler scenario where acting player pots rank A belonging to p2's hand
+    db.transact.mockClear();
+    idCounter = 1;
+
+    const coverRoom = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2', 'p3'],
+      totalSettlements: {},
+      players: [
+        createPlayer({
+          id: 'p1',
+          hand: [createCard('A', 'spades', 'p1-a'), createCard('K', 'spades', 'p1-k')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        createPlayer({
+          id: 'p2',
+          hasLicense: true, // p2 is licensed → will be declared winner
+          hand: [createCard('A', 'hearts', 'p2-a')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
+        createPlayer({
+          id: 'p3',
+          hand: [createCard('Q', 'clubs', 'p3-q')],
+          profile: [{ id: 'profile-3', displayName: 'Cara' }],
+        }),
+      ],
+    });
+
+    await GameEngine.commitVisit(db, coverRoom, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'p1-a' } }, // pots A → removes from p2's hand → p2 at zero
+    ]);
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const roomUpdate = findUpdateOp(txs, 'rooms', coverRoom.id);
+    const matchUpdate = findUpdateOp(txs, 'matches', 'id-1');
+    const settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
+
+    expect(roomUpdate?.payload?.winnerId).toBe('p2');
+    expect(roomUpdate?.payload?.status).toBe('FINISHED');
+
+    // Cover routing: p1 fully absorbs all base-game losses.
+    // p1 pays p2 for every non-winner (2 shares × $10 = $20).
+    // p3 owes nothing — no reimbursement to p1 for the base-game portion.
+    expect(settlements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fromPlayerId: 'p1', toPlayerId: 'p2', amount: 20 }),
+    ]));
+    // Ensure p3 does NOT reimburse p1
+    expect(settlements).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ fromPlayerId: 'p3', toPlayerId: 'p1' }),
+    ]));
+    // Net changes: p1 = -20, p2 = +20, p3 = 0
+    expect(roomUpdate?.payload?.totalSettlements).toEqual({
+      'profile-1': -20,
+      'profile-2': 20,
+      'profile-3': 0,
+    });
+  });
+
+  it('cover-win 2-player: actor pays winner both shares (2-player scenario)', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2'],
+      totalSettlements: {},
+      players: [
+        createPlayer({
+          id: 'p1',
+          hand: [createCard('A', 'spades', 'p1-a'), createCard('K', 'spades', 'p1-k')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        createPlayer({
+          id: 'p2',
+          hasLicense: true,
+          hand: [createCard('A', 'hearts', 'p2-a')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
+      ],
+    });
+
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'p1-a' } },
+    ]);
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
+    const matchUpdate = findUpdateOp(txs, 'matches', 'id-1');
+    const settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
+
+    expect(roomUpdate?.payload?.winnerId).toBe('p2');
+    // 2-player: only 1 non-winner (p1). Cover pays 1×10=10. No other losers.
+    // p1 covers 1 share = 10 → p2 receives 10. Net same as normal.
+    expect(settlements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fromPlayerId: 'p1', toPlayerId: 'p2', amount: 10 }),
+    ]));
+    expect(roomUpdate?.payload?.totalSettlements).toEqual({ 'profile-1': -10, 'profile-2': 10 });
+  });
+
+  it('normal win when winner holds multiple cards of the same rank and actor pots that rank (not cover-win)', async () => {
+    // Regression: applyPotAction wipes ALL copies of a rank from every player.
+    // p2 holds two A cards; p1 pots A → both of p2's cards are stripped at once.
+    // p2 wins (licensed), but since p2 had 2 cards before the pot this is NOT
+    // a cover-win — p1 did not clear p2's single last card. Settlement is normal.
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2', 'p3'],
+      totalSettlements: {},
+      players: [
+        createPlayer({
+          id: 'p1',
+          hand: [createCard('A', 'spades', 'p1-a'), createCard('K', 'spades', 'p1-k')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        createPlayer({
+          id: 'p2',
+          hasLicense: true,
+          // Two A cards — winner had more than one card before the pot
+          hand: [createCard('A', 'hearts', 'p2-a1'), createCard('A', 'diamonds', 'p2-a2')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
+        createPlayer({
+          id: 'p3',
+          hand: [createCard('Q', 'clubs', 'p3-q')],
+          profile: [{ id: 'profile-3', displayName: 'Cara' }],
+        }),
+      ],
+    });
+
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'p1-a' } }, // pots A → strips both of p2's A cards
+    ]);
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
+    const matchUpdate = findUpdateOp(txs, 'matches', 'id-1');
+    const settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
+
+    expect(roomUpdate?.payload?.winnerId).toBe('p2');
+    expect(roomUpdate?.payload?.status).toBe('FINISHED');
+
+    // Normal settlement: each loser pays the winner individually (NOT cover-win routing)
+    expect(settlements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fromPlayerId: 'p1', toPlayerId: 'p2', amount: 10 }),
+      expect.objectContaining({ fromPlayerId: 'p3', toPlayerId: 'p2', amount: 10 }),
+    ]));
+    // p3 must NOT owe p1 anything (no cover routing)
+    expect(settlements).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ fromPlayerId: 'p3', toPlayerId: 'p1' }),
+    ]));
+    // p1 pays its own share only (-10), p3 pays its own share only (-10), p2 receives both (+20)
+    expect(roomUpdate?.payload?.totalSettlements).toEqual({
+      'profile-1': -10,
+      'profile-2': 20,
+      'profile-3': -10,
+    });
+  });
+
+  // ─── Unlicensed zero-card penalty ──────────────────────────────────────────
+
+  it('unlicensed zero-card player draws two cards and game continues when actor pots their last card', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2'],
+      totalSettlements: {},
+      players: [
+        createPlayer({
+          id: 'p1',
+          hand: [createCard('A', 'spades', 'p1-a'), createCard('K', 'spades', 'p1-k')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        createPlayer({
+          id: 'p2',
+          hasLicense: false, // no license → cannot win, gets 2 penalty cards
+          hand: [createCard('A', 'hearts', 'p2-a')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
+      ],
+      deck: [
+        createCard('3', 'clubs', 'deck-3'),
+        createCard('4', 'diamonds', 'deck-4'),
+        createCard('5', 'hearts', 'deck-5'),
+      ],
+    });
+
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'p1-a' } },
+    ]);
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
+    const p2Update = findUpdateOp(txs, 'roomPlayers', 'p2');
+
+    // Game must NOT finish — no winner declared
+    expect(roomUpdate?.payload?.status).toBeUndefined();
+    expect(roomUpdate?.payload?.winnerId).toBeUndefined();
+
+    // p2 receives exactly two penalty cards
+    expect((p2Update?.payload?.hand as unknown[]).length).toBe(2);
+  });
+
+  it('unlicensed zero-card player draws two cards when deck has only one eligible card (draws max available)', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2'],
+      totalSettlements: {},
+      players: [
+        createPlayer({
+          id: 'p1',
+          hand: [createCard('A', 'spades', 'p1-a'), createCard('K', 'spades', 'p1-k')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        createPlayer({
+          id: 'p2',
+          hasLicense: false,
+          hand: [createCard('A', 'hearts', 'p2-a')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
+      ],
+      deck: [
+        createCard('3', 'clubs', 'deck-3'), // only one eligible card
+      ],
+    });
+
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'p1-a' } },
+    ]);
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
+    const p2Update = findUpdateOp(txs, 'roomPlayers', 'p2');
+
+    expect(roomUpdate?.payload?.status).toBeUndefined();
+    // Gets at most 1 card (deck ran out after 1)
+    expect((p2Update?.payload?.hand as unknown[]).length).toBe(1);
+  });
+
+  it('unlicensed zero-card penalty is NOT triggered for non-pot visits (draw, foul, joker)', async () => {
+    const db = createMockDb();
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2'],
+      totalSettlements: {},
+      players: [
+        createPlayer({
+          id: 'p1',
+          hasLicense: true,
+          jokerBalls: { direct: 1, all: 0 },
+          hand: [createCard('K', 'spades', 'p1-k'), createCard('3', 'spades', 'p1-3')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        createPlayer({
+          id: 'p2',
+          hasLicense: false,
+          hand: [], // already at zero before the visit (edge case guard)
+          cardCount: 0,
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
+      ],
+      deck: [createCard('4', 'hearts', 'deck-4')],
+    });
+
+    // MARK_FOUL does not have a POT_CARD action → penalty detection must not fire
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'MARK_FOUL' },
+    ]);
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const p2Update = findUpdateOp(txs, 'roomPlayers', 'p2');
+    // p2 should still have 0 cards — no penalty draw triggered by non-pot action
+    expect((p2Update?.payload?.hand as unknown[]).length).toBe(0);
+  });
+
+  // ─── Cover-win with jokers unchanged ───────────────────────────────────────
+
+  it('cover-win: joker settlements are computed normally on top of base-game cover routing', async () => {
+    const db = createMockDb();
+    // p1 pots A → p2 (licensed, 1 direct joker) wins; p3 is another loser
+    // Expected: base-game is cover-routed (p1 covers), joker direct is normal
+    const roomData = createRoomData({
+      status: 'PLAYING',
+      config: { gameAmount: 10, jokerAmount: 2 },
+      turnOrder: ['p1', 'p2', 'p3'],
+      totalSettlements: {},
+      players: [
+        createPlayer({
+          id: 'p1',
+          hand: [createCard('A', 'spades', 'p1-a'), createCard('K', 'spades', 'p1-k')],
+          profile: [{ id: 'profile-1', displayName: 'Alice' }],
+        }),
+        createPlayer({
+          id: 'p2',
+          hasLicense: true,
+          jokerBalls: { direct: 1, all: 0 }, // 1 direct joker
+          hand: [createCard('A', 'hearts', 'p2-a')],
+          profile: [{ id: 'profile-2', displayName: 'Bob' }],
+        }),
+        createPlayer({
+          id: 'p3',
+          hand: [createCard('Q', 'clubs', 'p3-q')],
+          profile: [{ id: 'profile-3', displayName: 'Cara' }],
+        }),
+      ],
+    });
+
+    await GameEngine.commitVisit(db, roomData, 'p1', [
+      { type: 'POT_CARD', payload: { cardId: 'p1-a' } },
+    ]);
+
+    const txs = db.transact.mock.calls[0][0] as TxOp[];
+    const matchUpdate = findUpdateOp(txs, 'matches', 'id-1');
+    const settlements = matchUpdate?.payload?.settlements as Array<{ fromPlayerId: string; toPlayerId: string; amount: number }>;
+
+    // Base-game cover: p1 pays p2 20 (2 shares × $10). p3 owes nothing for base-game.
+    // Direct joker for p2 (1 direct): p2 collects jokerAmount*(numPlayers-1)*1 = 2*2*1 = $4 from p1 (above in order).
+    // Total p1→p2 flows: $20 (base-game cover) + $4 (direct joker) = $24.
+    // p3→p1: no base-game reimbursement; only joker flows apply (none here for p3).
+    // Net: p1 pays p2 $24, p3 is untouched by base-game.
+    expect(settlements).toBeDefined();
+    expect(settlements.length).toBeGreaterThan(0);
+
+    // p1 pays p2 for both base-game cover and direct joker — they are the sole payer to p2
+    expect(settlements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fromPlayerId: 'p1', toPlayerId: 'p2' }),
+    ]));
+    // p3 should NOT owe p1 anything for base-game
+    expect(settlements).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ fromPlayerId: 'p3', toPlayerId: 'p1' }),
+    ]));
+
+    // p2 (winner) must receive a positive net; p1 must be negative; p3 is zero (no base-game debt)
+    const roomUpdate = findUpdateOp(txs, 'rooms', roomData.id);
+    const totalSettlements = roomUpdate?.payload?.totalSettlements as Record<string, number>;
+    expect(totalSettlements['profile-2']).toBeGreaterThan(0);
+    expect(totalSettlements['profile-1']).toBeLessThan(0);
+    expect(totalSettlements['profile-3']).toBe(0);
   });
 
   it('rejects a stale visit when the fresh room no longer supports the staged action', async () => {

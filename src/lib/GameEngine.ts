@@ -67,18 +67,81 @@ export class GameEngine {
         }, {});
     }
 
+    /**
+     * Resolve who wins after visit actions have been applied.
+     *
+     * Normal self-win: actor's own hand is empty → actor wins, no license check.
+     *
+     * Non-actor zero-card case (actor still has cards after a POT_CARD visit):
+     *   - If the zero-card player already holds a license → that player wins (cover-win).
+     *   - If the zero-card player has no license → they are NOT declared the winner;
+     *     instead `resolveNonActorZeroCardPenalty` draws two cards for them so the
+     *     game continues (handled in commitVisit before this function is called again).
+     *
+     * Returns null when there is no winner yet.
+     */
     private static resolveWinningPlayerId(roomData: any, actingPlayerId: string): string | null {
         const zeroCardPlayers = (roomData.players || []).filter((player: any) => (player.hand || []).length === 0);
         if (zeroCardPlayers.length === 0) return null;
 
+        // Actor wins unconditionally when they clear their own hand.
         if (zeroCardPlayers.some((player: any) => player.id === actingPlayerId)) {
             return actingPlayerId;
         }
 
+        // Non-actor reached zero cards. Only licensed players can be declared winner.
         const orderedPlayers = this.getPlayersInTurnOrder(roomData.players || [], roomData.turnOrder);
-        return orderedPlayers.find((player: any) => zeroCardPlayers.some((zeroPlayer: any) => zeroPlayer.id === player.id))?.id
-            || zeroCardPlayers[0]?.id
-            || null;
+        const candidate =
+            orderedPlayers.find((player: any) =>
+                zeroCardPlayers.some((zeroPlayer: any) => zeroPlayer.id === player.id),
+            ) || zeroCardPlayers[0];
+
+        if (!candidate) return null;
+
+        // License gate: unlicensed zero-card player cannot win here.
+        // commitVisit handles giving them two penalty cards before calling this.
+        return candidate.hasLicense ? candidate.id : null;
+    }
+
+    /**
+     * Detect whether a non-actor player has been left at zero cards without a license.
+     * When true, commitVisit must draw two cards for them before resolving a winner.
+     * Only relevant for visits that include at least one POT_CARD action.
+     */
+    private static detectUnlicensedZeroCardPlayer(
+        committedRoom: any,
+        actingPlayerId: string,
+        actions: VisitAction[],
+    ): any | null {
+        const hasPot = actions.some((a) => a.type === 'POT_CARD');
+        if (!hasPot) return null;
+
+        const actingPlayer = committedRoom.players.find((p: any) => p.id === actingPlayerId);
+        if (!actingPlayer || (actingPlayer.hand || []).length === 0) return null; // actor self-wins, handled separately
+
+        const nonActorAtZero = (committedRoom.players || []).find(
+            (p: any) => p.id !== actingPlayerId && (p.hand || []).length === 0,
+        );
+
+        if (!nonActorAtZero) return null;
+
+        // Only apply the penalty when the player does NOT have a license.
+        return nonActorAtZero.hasLicense ? null : nonActorAtZero;
+    }
+
+    /**
+     * Draw two eligible cards from the deck for a player who was left at zero cards
+     * without a license. Mutates roomData in place (on the cloned snapshot).
+     */
+    private static applyUnlicensedZeroCardPenalty(roomData: any, penaltyPlayer: any): void {
+        for (let i = 0; i < 2; i++) {
+            const { deck, cardToDraw } = this.drawEligibleCard(roomData.deck || [], roomData.pottedCards || []);
+            roomData.deck = deck;
+            if (cardToDraw) {
+                penaltyPlayer.hand = [...(penaltyPlayer.hand || []), cardToDraw];
+                penaltyPlayer.cardCount = penaltyPlayer.hand.length;
+            }
+        }
     }
 
     private static applyPotAction(roomData: any, playerId: string, payload: { cardId?: string; rank?: string }) {
@@ -220,7 +283,16 @@ export class GameEngine {
         return nextRoom;
     }
 
-    private static buildVisitCommitTxs(roomData: any, winningPlayerId: string | null) {
+    private static buildVisitCommitTxs(
+        roomData: any,
+        winningPlayerId: string | null,
+        /**
+         * Set when the acting player pots another player's last card while still
+         * holding cards themselves (cover-win). All base-game payments are funnelled
+         * through this player; joker rules are unaffected.
+         */
+        coverPlayerId?: string | null,
+    ) {
         const txs: any[] = [];
         const roomUpdate: Record<string, unknown> = {
             pottedCards: roomData.pottedCards || [],
@@ -238,7 +310,12 @@ export class GameEngine {
 
         if (winningPlayerId) {
             const orderedPlayers = this.getPlayersInTurnOrder(roomData.players, roomData.turnOrder);
-            const settlements = this.computeSettlements(orderedPlayers, winningPlayerId, roomData.config);
+            const settlements = this.computeSettlements(
+                orderedPlayers,
+                winningPlayerId,
+                roomData.config,
+                coverPlayerId ?? null,
+            );
             const netChanges: Record<string, number> = {};
             roomData.players.forEach((player: any) => {
                 netChanges[player.id] = 0;
@@ -340,8 +417,40 @@ export class GameEngine {
     static async commitVisit(db: any, roomData: any, playerId: string, actions: VisitAction[]) {
         if (!actions.length) return;
         const committedRoom = this.applyVisitActions(roomData, playerId, actions);
+
+        // Before resolving a winner, check whether a non-actor player reached zero
+        // cards without a license. If so, deal them two cards so they stay in the
+        // game. This mutates committedRoom in place and prevents them being resolved
+        // as the winner in the following step.
+        const unlicensedPenaltyPlayer = this.detectUnlicensedZeroCardPlayer(committedRoom, playerId, actions);
+        if (unlicensedPenaltyPlayer) {
+            this.applyUnlicensedZeroCardPenalty(committedRoom, unlicensedPenaltyPlayer);
+        }
+
         const winningPlayerId = this.resolveWinningPlayerId(committedRoom, playerId);
-        await db.transact(this.buildVisitCommitTxs(committedRoom, winningPlayerId));
+
+        // Detect cover-win: actor still has cards, but another (licensed) player won
+        // with exactly one card remaining before this visit. The one-card guard is
+        // critical: applyPotAction strips all copies of a rank at once, so a player
+        // holding two cards of the same rank can reach zero in a single pot. That
+        // scenario is a normal win, not a cover-win — the actor did not clear
+        // someone's "last ball" in the traditional sense.
+        const actorHasCards =
+            (committedRoom.players.find((p: any) => p.id === playerId)?.hand || []).length > 0;
+        const winnerPreCommitCardCount =
+            winningPlayerId !== null
+                ? (roomData.players.find((p: any) => p.id === winningPlayerId)?.hand || []).length
+                : 0;
+        const isCoverWin =
+            winningPlayerId !== null &&
+            winningPlayerId !== playerId &&
+            actorHasCards &&
+            winnerPreCommitCardCount === 1 &&
+            actions.some((a) => a.type === 'POT_CARD');
+
+        await db.transact(
+            this.buildVisitCommitTxs(committedRoom, winningPlayerId, isCoverWin ? playerId : null),
+        );
     }
 
     static async restartGame(db: any, roomData: any, initiatorId: string) {
@@ -386,7 +495,17 @@ export class GameEngine {
         }
     }
 
-    private static computeSettlements(players: any[], winnerId: string, config: RoomConfig): PairwiseSettlement[] {
+    private static computeSettlements(
+        players: any[],
+        winnerId: string,
+        config: RoomConfig,
+        /**
+         * Cover-win: when set, ALL base-game payments from non-winner players are
+         * funnelled through this player instead of paid directly by each loser.
+         * Joker settlements are computed normally and are unaffected by this parameter.
+         */
+        coverPlayerId: string | null = null,
+    ): PairwiseSettlement[] {
         const { gameAmount, jokerAmount } = config;
         const numPlayers = players.length;
 
@@ -409,9 +528,19 @@ export class GameEngine {
 
         const winner = players.find(p => p.id === winnerId)!;
 
-        players.forEach(p => {
-            if (p.id !== winnerId) addFlow(p.id, winnerId, gameAmount);
-        });
+        if (coverPlayerId && coverPlayerId !== winnerId) {
+            // Cover-win: the acting player fully absorbs ALL base-game losses.
+            // They pay the winner once for every non-winner player (including themselves).
+            // Other non-winners are exempt from base-game payments entirely — there is
+            // no reimbursement flow back to the cover player.
+            const nonWinners = players.filter(p => p.id !== winnerId);
+            const totalCoverAmount = gameAmount * nonWinners.length;
+            addFlow(coverPlayerId, winnerId, totalCoverAmount);
+        } else {
+            players.forEach(p => {
+                if (p.id !== winnerId) addFlow(p.id, winnerId, gameAmount);
+            });
+        }
 
         const winnerAll = winner.jokerBalls?.all || 0;
         players.forEach(p => {
