@@ -43,12 +43,22 @@ Use this skill when working anywhere in this repository.
 - `startGame()` only runs for the creator while the room is in `WAITING` and has at least two players.
 - Gameplay visit flow: only **normal pot** (POT_CARD with `cardId`) is staged in `stagedVisitActions` and committed with `COMMIT_VISIT`. **Wrong-ball pot** (POT_CARD with `rank`), **draw**, **foul**, and **joker** apply immediately: `sendMessage` gets a fresh room and calls `GameEngine.commitVisit(db, roomData, playerId, [single action])` with no staging. `GameEngine.applyVisitActions()` replays actions on a room snapshot; `GameEngine.commitVisit()` runs against a fresh room, resolves the winner, and persists in one transaction. There are no turn-based fields.
 - `pottedCards` stores ranks only.
-- Potting a rank removes every card of that rank from every player's hand.
+- Potting a rank removes **every** card of that rank from **every** player's hand (two cards of the same rank leave in one pot).
 - A successful first pot grants a license.
 - Fouls revoke the license and try to draw a penalty card that is not already potted.
 - Positive joker increments require a license; joker counts can never go below zero.
 - Direct joker payouts depend on `turnOrder`; "above" means the previous player in the ordered array.
 - Settlement netting belongs in `GameEngine.computeSettlements()`.
+- **Non-actor zero cards on a pot visit:** If someone other than the actor hits zero cards, they win only if they have a license. If unlicensed, they receive up to two eligible draws from the deck, the game stays `PLAYING`, and no `matches` row is written for that commit.
+- **Cover-win (engine-only):** If a licensed non-actor wins while the actor still has cards and the visit included a pot, cover-win applies only when the winner had **exactly one card** before that visit (`winnerPreCommitCardCount === 1`). Otherwise settlement is normal (each loser pays the winner base game). When cover-win applies, the actor pays the winner `gameAmount × nonWinners` for base game; other losers owe **zero** base game (no payback to the actor). Joker flows (direct/all) are unchanged.
+- There is **no** separate client message or UI button for cover-win; it is derived entirely inside `GameEngine.commitVisit` when finishing a game.
+
+### Where this is implemented
+
+- `commitVisit` (unlicensed penalty before winner resolution, cover-win flag, `buildVisitCommitTxs`)
+- `resolveWinningPlayerId`, `detectUnlicensedZeroCardPlayer`, `applyUnlicensedZeroCardPenalty`
+- `computeSettlements(..., coverPlayerId)` for base-game routing only
+- Unit tests: `src/lib/GameEngine.test.ts` (licensed cover-win, no reimbursement, same-rank two-card normal win, unlicensed two-draw, jokers on cover-win)
 
 ## Unit Testing Workflow
 

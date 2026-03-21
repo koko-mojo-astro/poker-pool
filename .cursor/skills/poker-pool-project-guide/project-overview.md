@@ -74,6 +74,9 @@ The app tracks live room state, player hands, potted ranks, joker counters, winn
 - Each player is dealt seven cards at game start.
 - Apply helpers (e.g. `applyPotAction`, `applyDrawAction`, `applyMarkFoulAction`, `applyJokerAction`) implement single-action semantics; `applyVisitActions()` replays a list of `VisitAction`s on a room snapshot.
 - A win is detected when any player's filtered hand reaches zero after applying the visit; winner resolution happens at commit time in `commitVisit`.
+- **Potting removes all copies of a rank** from every hand. A player can go from multiple cards to zero in one pot if those cards share the potted rank.
+- **Licensed non-actor winner:** If the actor did not empty their own hand but another player reached zero on a visit that includes `POT_CARD`, that player is the winner only if `hasLicense`. If not licensed, they draw up to two eligible cards instead, the room remains `PLAYING`, and no settlement is recorded for that transaction.
+- **Cover-win settlement:** When the actor still has cards, another licensed player wins, the visit includes a pot, and the winner had **exactly one card** before the visit, the acting player pays the winner the full base-game liability for every non-winner in one lump; other non-winners do not pay base game and do not reimburse the actor. If the winner had more than one card before the visit, use **normal** settlement (each non-winner pays the winner `gameAmount`). Joker settlement rules are the same in both cases.
 - Direct joker settlement pays the player above in `turnOrder`; all joker charges all eligible opponents.
 - Pairwise netting is centralized in `GameEngine.computeSettlements()`.
 
