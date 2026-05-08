@@ -52,6 +52,7 @@ export interface GameState {
     pottedCards: Rank[]; // Values like '7', 'K' that are potted
     deckCount: number;
     winnerId: string | null;
+    isGameFoul?: boolean;
     stagedVisitActions: VisitAction[];
     payouts?: PayoutInfo[];
     settlements?: PairwiseSettlement[];
@@ -73,6 +74,7 @@ export interface GameResult {
     winnerId: string;
     winnerName: string;
     timestamp: number;
+    isGameFoul?: boolean;
     netChanges: Record<string, number>; // PlayerId -> Net Amount (+/-)
     playerSnapshots: PlayerSnapshot[];
     settlements: PairwiseSettlement[];
@@ -106,6 +108,7 @@ export type ClientMessage =
     | { type: 'CLEAR_VISIT_DRAFT' }
     | { type: 'COMMIT_VISIT' }
     | { type: 'RESTART_GAME' }
+    | { type: 'GAME_FOUL' }
     | { type: 'RECONNECT'; payload: { roomId: string; playerId: string } }
     | { type: 'EXIT_ROOM' };
 

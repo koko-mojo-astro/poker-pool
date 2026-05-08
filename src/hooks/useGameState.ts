@@ -31,7 +31,8 @@ export function useGameState() {
         'RESTART_GAME',
         'DRAW_CARD',
         'MARK_FOUL',
-        'UPDATE_JOKER'
+        'UPDATE_JOKER',
+        'GAME_FOUL',
     ]);
 
     // 1. Auth state
@@ -140,6 +141,7 @@ export function useGameState() {
             pottedCards: displayRoomData.pottedCards || [],
             deckCount: displayRoomData.deck ? displayRoomData.deck.length : 0,
             winnerId: activeRoom.winnerId || null,
+            isGameFoul: activeRoom.isGameFoul ?? false,
             stagedVisitActions: draftActions,
             players: sortedPlayersData.map((rp: any) => ({
                 id: rp.id,
@@ -341,6 +343,12 @@ export function useGameState() {
                     if (activeRoom && activePlayerId) {
                         const latestRoomData = await getFreshRoomData();
                         if (latestRoomData) await GameEngine.restartGame(db, latestRoomData, activePlayerId);
+                    }
+                    break;
+                case 'GAME_FOUL':
+                    if (activeRoom && activePlayerId && activeRoom.status === 'PLAYING') {
+                        const latestRoomData = await getFreshRoomData();
+                        if (latestRoomData) await GameEngine.commitGameFoul(db, latestRoomData, activePlayerId);
                     }
                     break;
                 case 'RECONNECT':

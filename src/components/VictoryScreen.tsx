@@ -10,8 +10,11 @@ interface VictoryScreenProps {
 
 export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScreenProps) {
     const [showLeaderboard, setShowLeaderboard] = useState(false);
-    const winner = gameState.players.find(p => p.id === gameState.winnerId);
+    const isGameFoul = gameState.isGameFoul ?? false;
+    const foulPlayer = isGameFoul ? gameState.players.find(p => p.id === gameState.winnerId) : null;
+    const winner = isGameFoul ? foulPlayer : gameState.players.find(p => p.id === gameState.winnerId);
     const isWinner = playerId === gameState.winnerId;
+    const isFoulPlayer = isGameFoul && isWinner; // the current user is the foul player
     const settlements = gameState.settlements || [];
     const myPlayer = gameState.players.find(p => p.id === playerId);
 
@@ -48,14 +51,22 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
 
     return (
         <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '2rem', paddingBottom: '4rem' }}>
-            <h1 className="animate-fade-in" style={{ fontSize: '3rem', marginBottom: '1rem', background: 'linear-gradient(to right, #fbbf24, #d97706)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                GAME OVER
-            </h1>
+            {isGameFoul ? (
+                <h1 className="animate-fade-in" style={{ fontSize: '3rem', marginBottom: '1rem', background: 'linear-gradient(to right, #f59e0b, #d97706)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                    ⚠️ GAME FOUL
+                </h1>
+            ) : (
+                <h1 className="animate-fade-in" style={{ fontSize: '3rem', marginBottom: '1rem', background: 'linear-gradient(to right, #fbbf24, #d97706)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                    GAME OVER
+                </h1>
+            )}
 
-            <div className="glass-panel" style={{ width: '100%', maxWidth: '600px', textAlign: 'center', border: isWinner ? '2px solid #fbbf24' : '1px solid var(--glass-border)' }}>
-                <div style={{ fontSize: '1.2rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>WINNER</div>
-                <div style={{ fontSize: '2.5rem', fontWeight: 800, marginBottom: '2rem' }}>
-                    {winner.name} {isWinner && '(YOU!)'}
+            <div className="glass-panel" style={{ width: '100%', maxWidth: '600px', textAlign: 'center', border: isGameFoul ? '2px solid #f59e0b' : (isWinner ? '2px solid #fbbf24' : '1px solid var(--glass-border)') }}>
+                <div style={{ fontSize: '1.2rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                    {isGameFoul ? 'GAME FOUL BY' : 'WINNER'}
+                </div>
+                <div style={{ fontSize: '2.5rem', fontWeight: 800, marginBottom: '2rem', color: isGameFoul ? '#f59e0b' : 'inherit' }}>
+                    {winner.name}{isGameFoul ? ' ⚠️' : ''}{isWinner && ' (YOU!)'}
                 </div>
 
                 {/* All Players' Joker Stats */}
@@ -71,12 +82,16 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
                         <div key={p.id} style={{
                             display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr', gap: '4px',
                             alignItems: 'center', padding: '8px',
-                            background: p.id === gameState.winnerId ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.03)',
+                            background: isGameFoul
+                                ? (p.id === gameState.winnerId ? 'rgba(245, 158, 11, 0.1)' : 'rgba(255,255,255,0.03)')
+                                : (p.id === gameState.winnerId ? 'rgba(251, 191, 36, 0.1)' : 'rgba(255,255,255,0.03)'),
                             borderRadius: '8px', marginBottom: '4px',
-                            border: p.id === gameState.winnerId ? '1px solid rgba(251, 191, 36, 0.3)' : '1px solid transparent'
+                            border: isGameFoul
+                                ? (p.id === gameState.winnerId ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid transparent')
+                                : (p.id === gameState.winnerId ? '1px solid rgba(251, 191, 36, 0.3)' : '1px solid transparent')
                         }}>
                             <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>
-                                {p.name} {p.id === gameState.winnerId && '👑'}
+                                {p.name} {p.id === gameState.winnerId && (isGameFoul ? '⚠️' : '👑')}
                                 {p.id === playerId && <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}> (You)</span>}
                             </div>
                             <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: getSignedJokerColor(p.jokerBalls.direct, '#fbbf24') }}>{p.jokerBalls.direct}</div>
@@ -88,7 +103,9 @@ export function VictoryScreen({ gameState, playerId, sendMessage }: VictoryScree
 
                 {/* MY SETTLEMENT SECTION */}
                 <h3 style={{ borderBottom: '1px solid var(--glass-border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
-                    {isWinner ? '💰 This Match Earnings' : '📋 This Match Settlement'}
+                    {isGameFoul
+                        ? (isFoulPlayer ? '💸 Game Foul — Your Penalty' : '📋 Game Foul Settlement')
+                        : (isWinner ? '💰 This Match Earnings' : '📋 This Match Settlement')}
                 </h3>
 
                 {isWinner ? (

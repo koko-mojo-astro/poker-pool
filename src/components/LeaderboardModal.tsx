@@ -44,8 +44,9 @@ export function LeaderboardModal({ history, players, onClose }: LeaderboardModal
         return id.slice(0, 8);
     };
 
-    // Count wins per persistent profile when available.
+    // Count wins per persistent profile when available. Game foul matches are excluded from win counts.
     const stats = history.reduce((acc, result) => {
+        if (result.isGameFoul) return acc; // No winner in a game foul
         const winnerSnapshot = result.playerSnapshots?.find((snap) => snap.id === result.winnerId);
         const winnerKey = winnerSnapshot?.profileId || result.winnerId;
         const winnerName = winnerSnapshot?.profileId
@@ -220,14 +221,16 @@ export function LeaderboardModal({ history, players, onClose }: LeaderboardModal
                                         padding: '12px 16px',
                                         background: isExpanded ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
                                         borderRadius: isExpanded ? '8px 8px 0 0' : '8px',
-                                        border: '1px solid var(--glass-border)',
+                                        border: res.isGameFoul ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid var(--glass-border)',
                                         cursor: 'pointer',
                                         transition: 'background 0.2s'
                                     }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span>👑</span>
-                                        <span style={{ fontWeight: 'bold' }}>{getPlayerName(res.winnerId)}</span>
+                                        <span>{res.isGameFoul ? '⚠️' : '👑'}</span>
+                                        <span style={{ fontWeight: 'bold', color: res.isGameFoul ? '#f59e0b' : 'inherit' }}>
+                                            {res.isGameFoul ? `Game Foul by ${getPlayerName(res.winnerId)}` : getPlayerName(res.winnerId)}
+                                        </span>
                                         <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                                             {new Date(res.timestamp).toLocaleTimeString()}
                                         </span>
@@ -289,17 +292,14 @@ function GameDetailPanel({ result, getPlayerName, getSignedJokerColor }: {
                             <div style={{ fontWeight: 600 }}>
                                 {(() => {
                                     const currentName = getPlayerName(snap.id);
-                                    // If player is in room and has a valid name, use it.
                                     if (currentName !== snap.id.slice(0, 8) && currentName !== 'Unknown' && currentName !== 'Player') {
                                         return currentName;
                                     }
-                                    // Fallback to snapshot name if valid
                                     if (snap.name && snap.name !== 'Player' && snap.name !== 'Unknown') {
                                         return snap.name;
                                     }
-                                    // Absolute fallback
                                     return currentName;
-                                })()} {snap.id === result.winnerId && '👑'}
+                                })()} {snap.id === result.winnerId && (result.isGameFoul ? '⚠️' : '👑')}
                             </div>
                             <div style={{ textAlign: 'center', fontWeight: 'bold', color: getSignedJokerColor(snap.directJ, '#fbbf24') }}>{snap.directJ}</div>
                             <div style={{ textAlign: 'center', fontWeight: 'bold', color: getSignedJokerColor(snap.allJ, '#a78bfa') }}>{snap.allJ}</div>

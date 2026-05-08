@@ -495,6 +495,183 @@ export class GameEngine {
         }
     }
 
+    /**
+     * Compute settlements for a game foul scenario:
+     * - No winner; the foul player pays gameAmount to EACH other player (reversed base game).
+     * - Joker settlements proceed normally (turn-order rules) but without a winner bonus.
+     *   DIRECT jokers: player above in turn order pays jokerAmount × (numPlayers - 1) × directCount.
+     *   ALL jokers: each player with ALL jokers collects jokerAmount × allCount from every other player.
+     */
+    private static computeGameFoulSettlements(
+        players: any[],
+        foulPlayerId: string,
+        config: RoomConfig,
+    ): PairwiseSettlement[] {
+        const { gameAmount, jokerAmount } = config;
+        const numPlayers = players.length;
+
+        const flows: Record<string, number> = {};
+        const addFlow = (fromId: string, toId: string, amount: number) => {
+            if (fromId === toId || amount <= 0) return;
+            const key = `${fromId}->${toId}`;
+            flows[key] = (flows[key] || 0) + amount;
+        };
+        const addSignedFlow = (fromId: string, toId: string, signedAmount: number) => {
+            if (!signedAmount) return;
+            if (signedAmount > 0) { addFlow(fromId, toId, signedAmount); return; }
+            addFlow(toId, fromId, Math.abs(signedAmount));
+        };
+
+        // --- Base game (reversed): foul player pays gameAmount to each other player ---
+        players.forEach(p => {
+            if (p.id !== foulPlayerId) addFlow(foulPlayerId, p.id, gameAmount);
+        });
+
+        // --- Joker settlements (no winner, all players treated equally) ---
+
+        // DIRECT jokers: player's direct count → player above in turn order pays
+        players.forEach((p, idx) => {
+            const directCount = p.jokerBalls?.direct || 0;
+            if (directCount === 0) return;
+            const aboveIdx = (idx - 1 + numPlayers) % numPlayers;
+            const abovePlayer = players[aboveIdx];
+            const signedAmount = jokerAmount * (numPlayers - 1) * directCount;
+            addSignedFlow(abovePlayer.id, p.id, signedAmount);
+        });
+
+        // ALL jokers: each player with ALL jokers collects from each other player
+        players.forEach(p => {
+            const allCount = p.jokerBalls?.all || 0;
+            if (allCount === 0) return;
+            if (allCount > 0) {
+                players.forEach(other => {
+                    if (other.id === p.id) return;
+                    addFlow(other.id, p.id, jokerAmount * allCount);
+                });
+            } else {
+                // Negative ALL jokers: pay each other player
+                players.forEach(other => {
+                    if (other.id === p.id) return;
+                    addSignedFlow(other.id, p.id, jokerAmount * allCount);
+                });
+            }
+        });
+
+        // Pairwise netting
+        const settlements: PairwiseSettlement[] = [];
+        const processed = new Set<string>();
+
+        Object.keys(flows).forEach(key => {
+            const [fromId, toId] = key.split('->');
+            const pairKey = [fromId, toId].sort().join('|');
+            if (processed.has(pairKey)) return;
+            processed.add(pairKey);
+
+            const aToB = flows[`${fromId}->${toId}`] || 0;
+            const bToA = flows[`${toId}->${fromId}`] || 0;
+            const net = aToB - bToA;
+
+            if (Math.abs(net) > 0.001) {
+                const actualFrom = net > 0 ? fromId : toId;
+                const actualTo = net > 0 ? toId : fromId;
+                const absNet = Math.abs(net);
+
+                const parts: string[] = [];
+                const fwd = flows[`${actualFrom}->${actualTo}`] || 0;
+                const rev = flows[`${actualTo}->${actualFrom}`] || 0;
+                if (fwd > 0) parts.push(`$${fwd.toFixed(2)}`);
+                if (rev > 0) parts.push(`−$${rev.toFixed(2)} offset`);
+
+                settlements.push({
+                    fromPlayerId: actualFrom,
+                    toPlayerId: actualTo,
+                    amount: Math.round(absNet * 100) / 100,
+                    breakdown: parts.join(' ') || `$${absNet.toFixed(2)}`,
+                });
+            }
+        });
+
+        return settlements;
+    }
+
+    /**
+     * Ends the game as a game foul by foulPlayerId.
+     * The foul player is saved as winnerId (real ID) with isGameFoul=true.
+     * Settlements are reversed: foul player pays gameAmount to each other player.
+     * Jokers are settled as usual.
+     */
+    static async commitGameFoul(db: any, roomData: any, foulPlayerId: string) {
+        if (!roomData || roomData.status !== 'PLAYING') return;
+        const foulPlayer = roomData.players.find((p: any) => p.id === foulPlayerId);
+        if (!foulPlayer) return;
+
+        const orderedPlayers = this.getPlayersInTurnOrder(roomData.players, roomData.turnOrder);
+        const settlements = this.computeGameFoulSettlements(orderedPlayers, foulPlayerId, roomData.config);
+
+        // Compute net changes per roomPlayer id
+        const netChanges: Record<string, number> = {};
+        roomData.players.forEach((p: any) => { netChanges[p.id] = 0; });
+        settlements.forEach(s => {
+            netChanges[s.fromPlayerId] -= s.amount;
+            netChanges[s.toPlayerId] += s.amount;
+        });
+
+        // Map to profile IDs for totalSettlements
+        const netChangesByProfile = this.mapNetChangesToProfiles(roomData.players, netChanges);
+        const currentTotalSettlements = roomData.totalSettlements || {};
+        const newTotalSettlements = { ...currentTotalSettlements };
+        Object.entries(netChangesByProfile).forEach(([profileId, amount]) => {
+            newTotalSettlements[profileId] = (newTotalSettlements[profileId] || 0) + amount;
+        });
+
+        const foulPlayerProfile = foulPlayer?.profile;
+        const foulPlayerName =
+            foulPlayerProfile?.[0]?.displayName || foulPlayerProfile?.displayName || 'Player';
+
+        const playerSnapshots = roomData.players.map((player: any) => ({
+            id: player.id,
+            profileId: this.getPlayerProfileId(player),
+            name: player.profile?.[0]?.displayName || player.profile?.displayName || 'Player',
+            directJ: player.jokerBalls?.direct || 0,
+            allJ: player.jokerBalls?.all || 0,
+            cardCount: (player.hand || []).length,
+            hasLicense: !!player.hasLicense,
+        }));
+
+        const txs: any[] = [];
+
+        // Update room state
+        txs.push(tx.rooms[roomData.id].update({
+            status: 'FINISHED',
+            winnerId: foulPlayerId,
+            isGameFoul: true,
+            totalSettlements: newTotalSettlements,
+        }));
+
+        // Record match
+        const matchId = id();
+        txs.push(
+            tx.matches[matchId].update({
+                winnerId: foulPlayerId,
+                winnerName: foulPlayerName,
+                isGameFoul: true,
+                timestamp: Date.now(),
+                roomCode: roomData.roomCode,
+                netChanges,
+                playerSnapshots,
+                settlements,
+            }).link({ room: roomData.id }),
+        );
+
+        // Link all players' profiles to the match
+        roomData.players.forEach((player: any) => {
+            const profileId = Array.isArray(player.profile) ? player.profile?.[0]?.id : player.profile?.id;
+            if (profileId) txs.push(tx.matches[matchId].link({ players: profileId }));
+        });
+
+        await db.transact(txs);
+    }
+
     private static computeSettlements(
         players: any[],
         winnerId: string,
