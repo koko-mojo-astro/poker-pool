@@ -75,6 +75,25 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
         }
     };
 
+    const handleGameFoul = async () => {
+        const gameAmount = gameState.config.gameAmount;
+        const otherCount = gameState.players.length - 1;
+        const totalPenalty = gameAmount * otherCount;
+
+        const ok1 = await showConfirm(
+            `⚠️ Game Foul Declaration\n\nThis means you potted your last ball but committed a foul at the same time (e.g. cue ball dropped). The game will end and you will pay $${gameAmount.toFixed(2)} to each of the ${otherCount} other player(s) — total $${totalPenalty.toFixed(2)}.\n\nContinue?`
+        );
+        if (!ok1) return;
+
+        const ok2 = await showConfirm(
+            `⚠️ FINAL CONFIRMATION\n\nThis action is IRREVERSIBLE. The game will end immediately.\n\nDeclare Game Foul?`
+        );
+        if (!ok2) return;
+
+        void Promise.resolve(sendMessage({ type: 'GAME_FOUL' }));
+        showToast('Game Foul declared.', 'error');
+    };
+
     const handleUpdateJoker = async (type: 'direct' | 'all', delta: 1 | -1) => {
         if (isCommittingDraft || !myPlayer) return;
 
@@ -146,6 +165,21 @@ export function GameScreen({ gameState, playerId, sendMessage }: GameScreenProps
                             title="Leaderboard"
                         >
                             🏆
+                        </button>
+                        <button
+                            onClick={() => void handleGameFoul()}
+                            style={{
+                                background: 'rgba(245, 158, 11, 0.1)',
+                                border: '1px solid #f59e0b',
+                                padding: '8px 10px',
+                                borderRadius: '10px',
+                                color: '#f59e0b',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold',
+                            }}
+                            title="Declare Game Foul"
+                        >
+                            ⚠️
                         </button>
                         <button
                             onClick={async () => {

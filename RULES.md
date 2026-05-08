@@ -87,6 +87,7 @@ The `GameEngine` class in `src/lib/GameEngine.ts` is the canonical home for all 
 - **Win conditions**: a player's hand reaches 0 cards after potting. The pot operation also filters all players' hands by rank.
 - **Batched visit flow**: No turn-based fields. Actions (pot, draw, foul, joker) are staged in `GameState.stagedVisitActions`; the UI previews; `COMMIT_VISIT` triggers `GameEngine.commitVisit`, which applies the staged actions on a fresh room snapshot, resolves the winner, and persists in one transaction.
 - **License**: required to pot a card and claim Joker Balls. Fouls revoke the license.
+- **Game Foul**: when a player pots the last ball while committing a foul, the foul player pays the game amount to each other player; no winner bonus is awarded.
 - **Joker Balls**: two types — `direct` (pays the player above you in turn order) and `all` (winner collects from all).
 - Settlement math uses pairwise netting — `computeSettlements` is `private static` in `GameEngine`.
 

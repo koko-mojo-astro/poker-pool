@@ -30,6 +30,7 @@ const _schema = i.schema({
             timestamp: i.number().indexed(),
             winnerId: i.string(),
             winnerName: i.string(),
+            isGameFoul: i.boolean().optional(),
         }),
         profiles: i.entity({
             displayName: i.string(),
@@ -51,6 +52,7 @@ const _schema = i.schema({
             totalSettlements: i.json().optional(),
             turnOrder: i.json().optional(),
             winnerId: i.string().optional(),
+            isGameFoul: i.boolean().optional(),
         }),
     },
     links: {
